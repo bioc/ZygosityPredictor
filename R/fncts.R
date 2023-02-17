@@ -2250,6 +2250,8 @@ predict_zygosity <- function(purity,
     compact()
   return(result_list)
 } 
+## the following functions were taken from 
+## https://github.com/machow/astar-r
 #' @keywords internal
 make_search_node <- function(data, gscore, fscore) {
   env <- new.env()
