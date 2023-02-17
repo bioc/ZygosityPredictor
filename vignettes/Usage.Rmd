@@ -1,0 +1,460 @@
+---
+title: "Usage of ZygosityPredictor"
+author: "Marco Rheinnecker"
+output:
+  BiocStyle::html_document:
+    toc: true
+    toc_depth: 2
+vignette: >
+  %\VignetteIndexEntry{ZygosityPredictor_Usage}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+# Introduction
+
+The software package ZygosityPredictor allows to predict how many copies of a 
+gene are affected by mutations, in particular small variants (single nucleotide 
+variants, SNVs, and small insertions and deletions, Indels). In addition to the 
+basic calculations of the affected copy number of a variant, ZygosityPredictor 
+can phase multiple variants in a gene and ultimately make a prediction if and 
+how many wild-type copies of the gene are left. This information proves to be 
+of particular use in the context of translational medicine. For example, in 
+cancer genomes, ZygosityPredictor can address whether unmutated copies of 
+tumor-suppressor genes are present. ZygosityPredictor was developed to handle 
+somatic and germline small variants. In addition to the small variant context, 
+it can assess larger deletions, which may cause losses of exons or whole genes.
+
+# load example data
+
+To demonstrate the use of ZygosityPredictor, NGS data from the Seq-C2 project 
+were used [1]. In the following chunk, all required datalayer of the WGS_LL_T_1 
+sample are loaded. The variants are loaded as GRanges objects, one for somatic 
+copy number alterations (GR_SCNA), one for germline- and one for somatic small 
+variants (GR_GERM_SMALL_VARS and GR_SOM_SMALL_VARS). The input formats will be 
+discussed in more detail in section 4. 
+
+```{r}
+library(ZygosityPredictor)
+library(dplyr)
+library(stringr)
+library(GenomicRanges)
+
+# file to sequence alignment 
+FILE_BAM <- system.file("extdata", "ZP_example.bam", 
+                        package = "ZygosityPredictor")
+# meta information of the sample
+PURITY <- 0.98
+PLOIDY <- 1.57
+SEX <- "female"
+# variants
+data("GR_SCNA")
+data("GR_GERM_SMALL_VARS")
+data("GR_SOM_SMALL_VARS")
+# used gene model
+data("GR_GENE_MODEL")
+
+```
+
+# Calculation of affected copies of a variant
+
+Two functions are provided to calculate how many copies are affected by single 
+small variants, based on two formulas, one for germline variants and one for 
+somatic variants.
+
+## Germline variants
+
+To calculate the affected copies for a germline variant by using 
+```aff_germ_copies()```, the following inputs are required:
+
+* **af**: numeric; between 0 and 1; calculated allele frequency of the variant 
+in the tumor sample
+* **tcn**: numeric; total copy number at the position of the variant
+* **purity**: numeric; between 0 and 1; purity or tumor cell content of the 
+tumor sample
+* **c_normal**: numeric; expected copy number at the position of the variant 
+in normal tissue, 1 for gonosomes in male samples, and 2 for male autosomes and 
+all chromosomes in female samples. (The function can also assess the c_normal 
+parameter by itself, but then the following two inputs must be provided: 
+chr and sex)
+* **chr**: (only if c_normal is not provided) character; can be either a single 
+number or in the “chr1” format; chromosome of the variant
+* **sex**: (only if c_normal is not provided) character; either “male” or 
+“female” / “m” or “f”; sex of the sample
+
+the output is a numeric value that indicates the affected copies.
+
+```{r}
+## as an example we take the first variant of our prepared input data and 
+## extract the required information from different input data layer
+## the allele frequency and the chromosome can be taken from the GRanges object
+
+AF = elementMetadata(GR_GERM_SMALL_VARS[1])[["af"]]
+CHR = seqnames(GR_GERM_SMALL_VARS[1]) %>%
+  as.character()
+
+## the total copy number (tcn) can be extracted from the CNV object by selecting
+## the CNV from the position of the variant
+
+TCN = elementMetadata(
+  subsetByOverlaps(GR_SCNA, GR_GERM_SMALL_VARS[1])
+  )[["tcn"]]
+
+## purity and sex can be taken from the global variables of the sample
+## with this function call the affected copies are calculated for the variant
+aff_germ_copies(af=AF,
+                tcn=TCN,
+                purity=PURITY,
+                chr=CHR,
+                sex=SEX)
+```
+
+## Somatic variants
+
+To calculate how many copies are affected by a somatic variant by 
+```aff_som_copies()```, the same inputs are required, but a different formula 
+is evaluated:
+```{r}
+## the function for somatic variants works the same way as the germline function
+
+AF = elementMetadata(GR_SOM_SMALL_VARS[1])[["af"]]
+CHR = seqnames(GR_SOM_SMALL_VARS[1]) %>%
+  as.character()
+TCN = elementMetadata(
+  subsetByOverlaps(GR_SCNA, GR_SOM_SMALL_VARS[1])
+  )[["tcn"]]
+
+aff_som_copies(af=AF,
+               chr=CHR,
+               tcn=TCN,
+               purity=PURITY,
+               sex=SEX)
+```
+
+
+
+## Calculate affected copies of a set of variants
+
+In order to apply the previously mentioned functions to a whole set of variants 
+and calculate the affected copies, the following code can be used.
+```{r}
+## as an example we calculate the affected copies for the somatic variants:
+GR_SOM_SMALL_VARS %>%
+  ## cnv information for every variant is required.. merge with cnv object
+  IRanges::mergeByOverlaps(GR_SCNA) %>% 
+  as_tibble() %>%
+  ## select relevant columns
+  select(chr=1, pos=2, gene, af, tcn) %>%
+  mutate_at(.vars=c("tcn", "af"), .funs=as.numeric) %>%
+  rowwise() %>%
+  mutate(
+    aff_copies = aff_som_copies(chr, af, tcn, PURITY, SEX),
+    wt_copies = tcn-aff_copies
+  )
+```
+
+
+
+# Predict Zygosity
+
+In this section, we will use the WGS_LL_T_1 dataset from the Seq-C2 project as 
+an example to investigate whether mutations in the following genes result in 
+total absence of wildtype copies. The genes which were selected as an example 
+for the analysis are shown below. The example data set was reduced to these 
+genes.
+
+* TP53
+* BRCA1
+* TRANK1
+* TRIM3
+* JUP
+* CDYL
+* SCRIB
+* ELP2
+
+## Format of input data
+
+Some inputs are optional, while others are compulsory. The latter are labeled 
+with “**”. Of note, ZygosityPredictor is applied downstream of variant calling, 
+therefore the variant calls, including information on identified somatic copy 
+number aberrations (sCNAs), have to be provided. The inputs can be divided into 
+five classes:
+
+
+* File paths:
+  + **bamDna\*\* **: character; path to indexed alignment (.bam format)
+  + **bamRna**: character; path to rna-sequencing data (.bam format). 
+  + **vcf**: character, or character vector containing several vcf file paths; 
+  path to variant call file (.vcf.gz format). Will be used 
+  (if provided)
+  for extended SNP phasing if variants on the same gene are too far away from
+  each other for direct phasing
+* Sample meta information:
+  + **purity\*\* **: numeric; between 0 and 1; indicates purity or tumor cell 
+  content of the sample
+  + **ploidy**: numeric; ground ploidy of the sample
+  + **sex\*\* **: character; “male” or “female” / “m” or “f”; sex of the 
+  patient the sample was taken from
+* Variants
+  + **somCna\*\* **: GRanges object; containing all genomic segments (sCNA) 
+  with annotated total copy number (default metadata column name *“tcn”*, 
+  custom name can be provided by COLNAME_TCN) and information about LOH 
+  (default column name *“cna_type”*, custom name can be provided by 
+  COLNAME_CNA_TYPE). The cna_type column should contain the string “LOH” if 
+  loss-of heterozygosity is present at the segment. If large deletions should 
+  be included to the analysis the total copy number has to be decreased 
+  accordingly. If the total copy number is smaller than 0.5, the tool will 
+  assume a homozygous deletion. An incomplete deletion is assumed if at least 
+  one copy is lost compared to the ploidy of the sample (works only if the
+  ploidy is provided as an input)
+  + **somSmallVars**: GRanges object; containing all somatic small variants. 
+  Required metadata columns are: reference base (*“REF”/”ref”*), alternative 
+  base (*“ALT”/”alt”*), allele frequency in the tumor sample (raw allele 
+  frequency, i.e. as measured in the tumor sample; not the corrected allele 
+  frequency in the supposedly pure tumor) (*“AF”/”af”*), gene (*“gene”/”GENE”*, 
+  according to the used gene model (GENCODE39 in the example data) and the 
+  annotation provided below). If no relevant somatic small variants are 
+  present, can also be NULL or not provided.
+  + **germSmallVars**: GRanges object; Analogous to GR_SOM_SMALL_VARS. If no 
+  relevant germline small variants are present, can also be NULL or not 
+  provided.
+* Used Gene model
+  + **geneModel\*\* **: GRanges object; containing the gene model for the used 
+  reference genome. Required metadata columns are: *"gene"*. Artificially 
+  restricting the gene model can be used to tell the tool which genes to 
+  analyze. In the case of this vignette, the object contains only the genes we 
+  selected.
+* Options
+  + **includeIncompleteDel**: logical, default=TRUE; Should incomplete 
+  deletions (monoallelic deletions in a diploid sample) be included in the 
+  evaluation? Since these often span large parts of the chromosomes and will 
+  lead to many affected genes, it can be advisable to include or exclude them, 
+  depending on the research question.
+  + **includeHomoDel**: logical, default=TRUE; Should homozygous deletions be 
+  included in the evaluation?
+  + **showReadDetail**: logical, default=FALSE; If this option is TRUE, another 
+  table is added to the output that contains more detailed information about 
+  the classification of the read pairs. More detailed information is provided 
+  in section 4.3.4.
+  + **assumeSomCnaGaps**: logical, default=FALSE; Only required if the somCna 
+  object lacks copy number information for genomic segments on which small 
+  variants are detected. By default, variants in such regions will be excluded 
+  from the analysis as required information about the copy number is missing. 
+  These variants will be attached to the final output list in a separate 
+  tibble. To include them, this flag must be set TRUE and the ground ploidy 
+  must be given as an input. This ground ploidy will then be taken as *tcn* 
+  in the missing regions.
+  + **byTcn**: logical, default=TRUE; optional if includeHomoDel or 
+  includeIncompleteDel is TRUE. If FALSE the tool will not use tcn as a 
+  criterion to assign large deletions. It will use the cna_type column and 
+  check for indicating strings like HOMDEL/HomoDel/DEL. Some commonly used 
+  strings are covered. It is recommended to leave this flag TRUE.
+  + **printLog**:  logical, default=TRUE; If TRUE, the tool will print detailed
+  information how the assessment is done for each gene.
+  + **colnameTcn**: character; indicating the name of the metadata column 
+  containing the tcn information in the somCna object. If not provided 
+  the tool tries to detect the column according to default names.
+  + **colnameCnaType**: character; The same as for colnameTcn, but for 
+  cna-type information.
+  + **distCutOff**: numeric, default=5000; if input vcf is provided and SNP
+  phasing is performed, this will limt the distance at which the SNP phasing
+  should not be tried anymore. As the probability of finding overlapping reads
+  at such a long distance is very low and the runtime will increase
+  exponentially.
+
+
+## Predict zygosity for a set of genes in a sample
+
+The prediction of zygosity for a set of genes in a sample can be assessed by 
+the ```predict_zygosity()``` function.
+
+**Important note**: The runtime of the analysis depends strongly on the number 
+of genes to be assessed and on the number of input variants. It is therefore 
+recommended to reduce the number of genes to the necessary ones. Also, 
+depending on the research question to be addressed, the variants should be 
+filtered to the most relevant ones, not only because of runtime considerations, 
+but also to sharpen the final result. A large number of mutations in a gene, 
+some of which are of little biological relevance or even SNPs, will inevitably 
+reduce the validity of the results.
+
+```{r, results = FALSE}
+full_prediction = predict_zygosity(
+  purity = PURITY, 
+  ploidy = PLOIDY,
+  sex = SEX,
+  somCna = GR_SCNA, 
+  somSmallVars = GR_SOM_SMALL_VARS, 
+  germSmallVars = GR_GERM_SMALL_VARS, 
+  geneModel = GR_GENE_MODEL,
+  bamDna = FILE_BAM,
+  showReadDetail = TRUE
+)
+```
+
+## Interpretation of results
+
+Of note, the results displayed here were chosen to explain and exemplify the 
+functionality of the tool; biological and medical impact of the specific 
+variants had not been a selection criterion.
+The result which is returned by the function consists of a list of three 
+(or up to six) tibbles:
+
+* Evaluation per variant
+* Evaluation per gene
+* Phasing info
+* Read pair info (only if showReadDetail=TRUE)
+* Variants not covered by somCna (only if present and no sCNA gap assumption 
+was done)
+* detailed information about extended SNP phasing if it was performed
+
+### Evaluation per variant
+
+The first result of the function is the evaluation per variant. In this step 
+all information required for subsequent steps is annotated and the affected 
+copies per variant are calculated. For every variant, the function checks 
+whether it already affects all copies of the gene. The format of the output is 
+a tibble; the number of rows corresponds to the total 
+number of input variants. The tool annotates a few self-explanatory columns 
+such as the origin of the respective variant (germline/somatic) or the class 
+(snv/ins/del). It also appends information from the sCNA results: the total 
+copy number at the position of the variant and the information if a loss of 
+heterozygosity is present (cna_type). Also, an ID is assigned to every small 
+variant. Then, the genes are numbered consecutively in order to unambiguously 
+assign variants to genes in the following analysis. The most important results 
+of this step are the calculation of the affected and wildtype copies, as well
+as, depending on the data, an initial check of whether a variant already affects 
+all copies.
+Of note, there can be situations in which left wildtype copies are below 0.5,  
+but still this information is not sufficient to predict *“all copies affected”* 
+without doubt. Depending on the origin of the variant, further criteria must 
+be met (e.g., LOH). The procedure for this first check is shown in the pre_info 
+column.
+
+
+```{r}
+# here the new columns are selected and viewed
+full_prediction$eval_per_variant %>%
+  # these steps are just to have a better overview
+  # round numeric columns
+  mutate_at(.vars=c("af","tcn", "aff_cp", "wt_cp"),
+            .funs = round, 2) %>%
+  # to get a better overview, the columns which are already in the inut are 
+  # removed
+  select(-chr, -pos, -alt, -ref, -af)
+```
+For example, mutation m1 in *TRANK1* (first line) fulfills all criteria that 
+are sufficient for a germline variant to say with a high degree of certainty 
+that all copies are affected, which can be seen in the pre_info column. The 
+same applies to the somatic *JUP* variant. In the case of the *ELP2*, *CDYL* 
+and *SCRIB* genes, there are two or even three variants, neither of which leads 
+to complete loss of the wildtype gene, which is why the next step is to check 
+whether they together affect all copies. Homzygous deletions (homdels) always 
+lead automatically to "all copies affected", whereas incomplete deletions do not 
+affect all copies.
+
+### Aggregation per gene
+
+The aggregation at gene level is one of the main features of ZygosityPredictor. 
+A prediction of how many copies are affected by mutations is provided for every 
+gene. The final prediction is stored in tibble format with three columns: gene, 
+status - either “all copies affected” or “wt copies left” - and an info column 
+that explains how the prediction was made for that gene.
+```{r}
+full_prediction$eval_per_gene
+```
+
+Each gene appears once in the table. If there are several variants in one gene, 
+the info always refers to the one that affects the highest number of copies. If 
+most copies are affected by a combination of  two small variants, the info 
+refers to both of them. In general, the heterozygous deletions have the lowest 
+priority; and if any other small variant or homdel is present in the gene, it 
+will always be indicated as the more relevant variant. In the case of *ELP2*, 
+*CDYL* and *SCRIB*, several small variants are present, which is why the tool 
+attempts to do phasing at the present position. This is indicated by “phasing” 
+in the info column. The exact results of the phasing can be viewed in detail 
+in the next step.
+
+### Haplotype-phasing results
+
+A haplotype phasing is only performed if more than one variant occurs in a 
+gene, each of which does not affect all copies of the gene by itself. The tool 
+then tries to phase at this position to check if the variants are located on 
+the same or different copies. That means that not at every prediction a phasing 
+is done and therefore the following output is not always present.
+```{r}
+full_prediction$phasing_info
+```
+In the present case, phasing was performed for three genes separately. 
+The output contains information such as the distance between the two variants 
+and the tcn at the position. If tcn differs at both positions, for example for 
+breakpoint genes, the larger one is displayed here. The status column shows 
+whether the mutations were found on the same copy (*same*) or on different 
+copies (*diff*). This prediction is determined by whether the mutations are on 
+the same reads / read pairs. The column DNA_rds contains the number of 
+reads / read pairs that cover both positions. If RNA is available, the number 
+of reads / read pairs is also displayed for RNA reads. Depending on whether the 
+variants were found on different or the same copies, a final prediction for the 
+remaining wildtype-copies can be calculated from the affected copies of both 
+variants. 
+This final calculation can be found in the column *left_wt_cp*. Only if the 
+variants are found on different copies and the remaining wildtype-copies are 
+below 
+0.5, it can be assumed that no wildtype copies are left. 
+The four columns *both*, 
+*none*, *mut1*, and *mut2* indicate how many of the reads / read pairs belong 
+to each category: Both variants detected, none, only the first, or only the 
+second. RNA reads that do not contain an exon necessary for phasing, e.g., due 
+to alternative splicing or that map somewhere entirely different in the genome, 
+end up in a category called *non-overlapping*. The category *dev_var* contains 
+reads / read pairs that carry a different variant than the one to be expected 
+at the position. The output for *ELP2* shows how genes are handled in which 
+more than 2 variants occur. Each mutation is then combined once with each other 
+to perform the phasing on each combination. In the case of *ELP2* three 
+variants are present, resulting in three possible combinations. Two of the 
+variants are located close to each other (*m1* and *m2*), while the third one 
+has a distance of almost 9000 basepairs to them. Therefore, it is only possible 
+to assign a status to the combination of the close variants. The two other 
+combinations get the status "null" as no overlapping reads / read pairs are 
+present. Theoretically, the tool can attempt phasing if no reads overlap 
+both positions. For such distant variants, intermediate SNPs can be used, 
+which then have to be provided by the input *vcf*.
+
+### Detailed info about used read pairs
+
+This output is only provided if the option showReadDetail is set TRUE. It 
+consists of a table containing every read pair that was used to perform 
+haplotype phasing. In more detail, the read name of the read in the bam file is 
+provided with the classification in one of the four categories mentioned before 
+(*both, none, mut1, mut2, no_overlap, dev_var*).
+
+```{r}
+full_prediction$readpair_info
+```
+For example here, the first row tells us that the read / read pair with the 
+name K00281:15:HM775BBXX:8:2113:22972:30398 (first row) stem from a fragment of 
+the gene ELP2 and can be used for the phasing of the combination of the 
+variants m1 and m2. It was assigned into the category "mut2" which means that 
+m2 is present on that read / read pair, but m1 was not detected. Depending on 
+the number of variants of the used sample and the coverage, this table can get 
+very big, which may affect runtime.
+
+# References
+
+1. Fang LT, Zhu B, Zhao Y, Chen W, Yang Z, Kerrigan L, Langenbach K, de Mars M, 
+Lu C, Idler K, et al. Establishing community reference samples, data and call 
+sets for benchmarking cancer mutation detection using whole-genome sequencing. 
+Nature Biotechnology. 2021;39(9):1151-1160 / PMID:34504347
+2. Lawrence M, Huber W, Pages H, Aboyoun P, Carlson M, et al. (2013) Software 
+for Computing and Annotating Genomic Ranges. PLoS Comput Biol 9(8): e1003118. 
+doi:10.1371/journal.pcbi.1003118*
+3. Wickham H, François R, Henry L, Müller K (2022). _dplyr: A Grammar of Data 
+Manipulation_. R package version 1.0.10, 
+<https://CRAN.R-project.org/package=dplyr>.
+4. Wickham H (2022). _stringr: Simple, Consistent Wrappers for Common String 
+Operations_. 
+https://stringr.tidyverse.org, https://github.com/tidyverse/stringr.
+
+```{r}
+sessionInfo()
+```
+
