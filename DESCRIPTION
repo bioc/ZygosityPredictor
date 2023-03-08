@@ -6,7 +6,8 @@ Date: 2022-10-26
 Authors@R: c(
   person("Marco", "Rheinnecker", 
     email="marco.rheinnecker@dkfz-heidelberg.de", 
-    role = c("aut", "cre")), 
+    role = c("aut", "cre"),
+    comment=c(ORCID="0009-0009-7181-3977")), 
   person("Marc", "Ruebsam", 
     role = c("aut")),
   person("Daniel", "Huebschmann", 
@@ -35,9 +36,10 @@ RoxygenNote: 7.2.3
 Encoding: UTF-8
 biocViews: BiomedicalInformatics, FunctionalPrediction, SomaticMutation, GenePrediction
 Depends: 
-    R (>= 4.3.0)
+    R (>= 4.2.2)
 LazyData: false
 Suggests: 
     knitr,
-    rmarkdown
+    rmarkdown,
+    testthat
 VignetteBuilder: knitr

@@ -25,6 +25,19 @@ tumor-suppressor genes are present. ZygosityPredictor was developed to handle
 somatic and germline small variants. In addition to the small variant context, 
 it can assess larger deletions, which may cause losses of exons or whole genes.
 
+# Installation
+
+The following code can be used to install ZygosityPredictor. The installation
+needs to be done once. 
+
+```{r, eval=FALSE}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("ZygosityPredictor")
+```
+
+
 # load example data
 
 To demonstrate the use of ZygosityPredictor, NGS data from the Seq-C2 project 

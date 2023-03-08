@@ -4,7 +4,7 @@
 \alias{aff_germ_copies}
 \title{calculates how many copies are affected by a germnline small variant}
 \usage{
-aff_germ_copies(chr, af, tcn, purity, sex, cc = 1, c_normal = NULL)
+aff_germ_copies(chr, af, tcn, purity, sex, c_normal = NULL)
 }
 \arguments{
 \item{chr}{chromosome of the variant (either format 1,2,..,X,Y or 
@@ -18,8 +18,6 @@ chr1,..,chrX)}
 the fraction of relevant sample with control/unrelevant tissue)}
 
 \item{sex}{sex of the sample (character: "male", "female", "m", "f")}
-
-\item{cc}{expected affected copies... should be 1 for germline variants}
 
 \item{c_normal}{expected copy number at position of the variant in normal 
 tissue, 1 for gonosomes in male samples, and 2 for male autosomes and all 

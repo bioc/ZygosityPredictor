@@ -1,39 +1,38 @@
 #' @keywords internal
 catt <- function(printLog, level, text){
   if(printLog==TRUE){
-    cat(paste(c("\n",rep("  ", level)), collapse=""), 
-        paste(text, collapse=" "))
+    message(rep("  ", level), text)
   }
 }
 #' @keywords internal
-#' @import stringr
+#' @importFrom stringr %>%
 #' @importFrom GenomicRanges GRanges elementMetadata
 #' @importFrom GenomicAlignments readGAlignmentPairs first last
 #' @importFrom Rsamtools ScanBamParam
 #' @importFrom IRanges subsetByOverlaps
-#' @rawNamespace import(dplyr, except = c(first,last))
+#' @importFrom dplyr tibble
 prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2){
   qname.first <- . <- NULL
   ## importFrom dplyr tibble filter
-  ref_pos1 <- pos1 %>% as.numeric()
-  ref_pos2 <- pos2 %>% as.numeric()
-  ref_chr1 <- chr1 %>% as.character()
-  ref_chr2 <- chr2 %>% as.character()
+  ref_pos1 <- as.numeric(pos1)
+  ref_pos2 <- as.numeric(pos2)
+  ref_chr1 <- as.character(chr1)
+  ref_chr2 <- as.character(chr2)
   if(pos1>pos2){
-    ref_pos1 <- pos2 %>% as.numeric()
-    ref_pos2 <- pos1 %>% as.numeric()
-    ref_chr1 <- chr2 %>% as.character()
-    ref_chr2 <- chr1 %>% as.character()
+    ref_pos1 <- as.numeric(pos2)
+    ref_pos2 <- as.numeric(pos1)
+    ref_chr1 <- as.character(chr2)
+    ref_chr2 <- as.character(chr1)
   }
-  ref_gr1 <- GenomicRanges::GRanges(seqnames = ref_chr1, 
+  ref_gr1 <- GRanges(seqnames = ref_chr1, 
                                    ranges = ref_pos1)
-  ref_gr2 <- GenomicRanges::GRanges(seqnames = ref_chr2, 
+  ref_gr2 <- GRanges(seqnames = ref_chr2, 
                                    ranges = ref_pos2)
   ## now load all reads/read-pairs that cover the position of the first variant
-  all_covering_read_pairs <- GenomicAlignments::readGAlignmentPairs(
+  all_covering_read_pairs <- readGAlignmentPairs(
     bamDna,
-    param=Rsamtools::ScanBamParam(
-      which=GenomicRanges::GRanges(seqnames = ref_chr1, 
+    param=ScanBamParam(
+      which=GRanges(seqnames = ref_chr1, 
                                    ranges = ref_pos1),
       what=c("qname","seq", "cigar")
     )) 
@@ -145,6 +144,19 @@ insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
   comb_somCna <- Reduce(function(x,y)c(x,y),new_somCna)
   return(comb_somCna)
 }
+pre_scoring <- function(tcn1, tcn2, status, aff_copies1, aff_copies2){
+  mtcn <- min(as.numeric(tcn1), as.numeric(tcn2))
+  left_wt_copies <- ifelse(status=="diff",
+                           mtcn-sum(as.numeric(aff_copies1), 
+                                    as.numeric(aff_copies2)),
+                           mtcn-max(as.numeric(aff_copies1), 
+                                    as.numeric(aff_copies2)))
+  pre_score <- ifelse(status=="diff"&left_wt_copies<0.5,
+                      2, 1)
+  return(list(mtcn=mtcn,
+              left_wt_copies=left_wt_copies,
+              pre_score=pre_score))
+}
 #' @keywords internal
 #' @rawNamespace import(dplyr, except = c(first,last))
 #' @import stringr
@@ -252,33 +264,18 @@ classify_combination <- function(classified_reads, purity, eval_full, printLog,
     none_raw=none_raw
     )
   if(eval_full==TRUE){
-    mtcn <- min(as.numeric(tcn1), as.numeric(tcn2))
-    left_wt_copies <- ifelse(status=="diff",
-                             mtcn-sum(as.numeric(aff_copies1), 
-                                      as.numeric(aff_copies2)),
-                             mtcn-max(as.numeric(aff_copies1), 
-                                      as.numeric(aff_copies2)))
-    pre_score <- ifelse(status=="diff"&left_wt_copies<0.5,
-                        2, 1)
-    # info <- case_when(
-    #   status=="null" ~ "phasing",
-    #   status=="same" ~ "phasing -> muts on same read-pair",
-    #   status=="diff" ~ paste("phasing",'muts on diff read-pairs',
-    #                             paste(round(left_wt_copies, 2), 
-    #                                   'wt-copies left'), 
-    #                             sep=' -> ')
-    # )
-    if(status=="diff"&pre_score==1&round(mtcn)<=2){
+    psc <- pre_scoring(tcn1, tcn2, status, aff_copies1, aff_copies2)
+    if(status=="diff"&psc$pre_score==1&round(psc$mtcn)<=2){
       catt(printLog, 3, 
            "muts at different copies and tcn<=2, but left wt-copies >= 0.5!")
     }
     status_table <- status_table %>%
       mutate(
-        score=pre_score,
-        wt_cp=round(left_wt_copies,2),
-        tcn=round(mtcn,2),
+        score=psc$pre_score,
+        wt_cp=round(psc$left_wt_copies,2),
+        tcn=round(psc$mtcn,2),
         info=paste(status_def_info, "-> left wt copies", 
-                   round(left_wt_copies,2))
+                   round(psc$left_wt_copies,2))
       )
   } 
   return(status_table)
@@ -457,21 +454,10 @@ check_tcn <- function(tcn){
 #' @keywords internal
 check_chr <- function(chr){
   if(chr %in% allowed_inputs("chrom_names")){
-    return(chr)
+    return(as.character(chr))
   } else {
-    error_message <- paste(
-      "input chromosome (chr) must be either a number between",
-                  "1 and 23 or X or Y, or in the chr1 format")
-    stop(error_message)
-  }
-}
-#' @keywords internal
-check_cc <- function(cc){
-  num_cc <- as.numeric(cc)
-  if(is.na(num_cc)){
-    stop("input cc must be numeric")
-  } else {
-    return(num_cc)
+    stop("input chromosome (chr) must be either a number between ",
+          "1 and 23 or X or Y, or in the chr1 format")
   }
 }
 #' calculates how many copies are affected by a germnline small variant
@@ -483,7 +469,6 @@ check_cc <- function(cc){
 #' @param chr chromosome of the variant (either format 1,2,..,X,Y or 
 #' chr1,..,chrX)
 #' @param sex sex of the sample (character: "male", "female", "m", "f")
-#' @param cc expected affected copies... should be 1 for germline variants
 #' @param c_normal expected copy number at position of the variant in normal 
 #' tissue, 1 for gonosomes in male samples, and 2 for male autosomes and all 
 #' chromosomes in female samples. (The function can also assess the c_normal 
@@ -498,11 +483,48 @@ check_cc <- function(cc){
 #' aff_germ_copies(af=0.67, tcn=2, purity=0.9, chr="chrX", sex="female")
 #' @rawNamespace import(dplyr, except = c(first,last)) 
 #' @import stringr
-aff_germ_copies <- function(chr, af, tcn, purity, sex, cc=1, c_normal=NULL){
+aff_germ_copies <- function(chr, af, tcn, purity, sex, 
+                            c_normal=NULL){
+  cv <- formula_checks(chr, af, tcn, purity, sex, c_normal)
+  aff_cp <- cv$af*(cv$tcn+cv$c_normal*(1/cv$purity - 1)) - 1/cv$purity + 1
+  return(aff_cp) 
+  # alternative: (af*(purity*tcn+c_normal*(1-purity))-cc*(1-purity))/purity 
+}
+#' calculates how many copies are affected by a somatic small variant
+#'
+#' @param af Allele-frequency of the variant (numeric value between 0 and 1)
+#' @param tcn total-copynumber at position of the variant (numeric value >0)
+#' @param purity purity of the sample (numeric value between 0 and 1 indicating 
+#' the fraction of relevant sample with control/unrelevant tissue)
+#' @param chr chromosome of the variant (either format 1,2,..,X,Y or 
+#' chr1,..,chrX)
+#' @param sex sex of the sample (character: "male", "female", "m", "f")
+#' @param c_normal expected copy number at the position of the variant in 
+#' normal tissue, 1 for gonosomes in male samples, and 2 for male autosomes and 
+#' all chromosomes in female samples. (The function can also assess the 
+#' c_normal parameter by itself, but then the following two inputs must be 
+#' provided: chr and sex)
+#' @return A numeric value indicating the affecting copies for the variant
+#' @rawNamespace import(dplyr, except = c(first,last)) 
+#' @import stringr
+#' @examples 
+#' library(dplyr)
+#' library(purrr)
+#' library(stringr)
+#' aff_som_copies(chr="chrX", af=0.67, tcn=2, purity=0.9, sex="female")
+#' @export
+aff_som_copies <- function(chr, af, tcn, purity, sex, c_normal=NULL){
+  cv <- formula_checks(chr, af, tcn, purity, sex, c_normal)
+  aff_cp <- cv$af*(cv$tcn+cv$c_normal*((1/cv$purity)-1))
+  return(aff_cp)
+  ## alternative: aff_cp = af*(tcn+c_normal/purity-c_normal)
+}
+#' @keywords internal
+#' description follows
+formula_checks <- function(chr, af, tcn, purity, sex, c_normal){
   purity <- check_purity(purity)
   af <- check_af(af)
   tcn <- check_tcn(tcn)
-  cc <- check_cc(cc)
   if(is.null(c_normal)){
     sex <- check_sex(sex)
     chr <- check_chr(chr)
@@ -514,9 +536,17 @@ aff_germ_copies <- function(chr, af, tcn, purity, sex, cc=1, c_normal=NULL){
   } else {
     c_normal <- check_ploidy(c_normal)
   }
-  aff_cp <- af*(tcn+c_normal*(1/purity - 1)) - 1/purity + 1
-  return(aff_cp) 
-  # alternative: (af*(purity*tcn+c_normal*(1-purity))-cc*(1-purity))/purity 
+  return(list(af=af, tcn=tcn, purity=purity, c_normal=c_normal))
+}
+merge_sCNAs <- function(obj, somCna){
+  alt <- af <- tcn <- tcn_assumed <- cna_type <- gene <- ref <- NULL
+  obj %>%
+    IRanges::mergeByOverlaps(somCna) %>% as_tibble() %>%
+    mutate(cna_type=ifelse(str_detect(cna_type, "LOH"), "LOH", "HZ")) %>%
+    select(chr=1, pos=2, gene, ref, alt, af, tcn, cna_type, tcn_assumed) %>%
+    mutate_at(.vars = c("af", "tcn"), .funs=as.numeric) %>%
+    rowwise() %>%
+    return()
 }
 #' @keywords internal
 #' description follows
@@ -530,11 +560,9 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
     aff_cp <- wt_cp <- . <- tcn_assumed <- NULL
   if(!is.null(somSmallVars)){
     rel <- somSmallVars%>%
-      IRanges::mergeByOverlaps(somCna) %>% as_tibble() %>% 
-      mutate(cna_type=ifelse(str_detect(cna_type, "LOH"), "LOH", "HZ")) %>%
-      select(chr=1, pos=2, gene, ref, alt, af, tcn, cna_type, tcn_assumed) %>%
-      mutate_at(.vars=c("tcn", "af"), .funs=as.numeric) %>%
-      rowwise() %>%
+      merge_sCNAs(., somCna) %>%
+      
+      ################################
       mutate(
         origin="somatic",
         class=define_class(ref, alt),
@@ -653,48 +681,6 @@ extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE,
     return(NULL)
   }
 }
-#' calculates how many copies are affected by a somatic small variant
-#'
-#' @param af Allele-frequency of the variant (numeric value between 0 and 1)
-#' @param tcn total-copynumber at position of the variant (numeric value >0)
-#' @param purity purity of the sample (numeric value between 0 and 1 indicating 
-#' the fraction of relevant sample with control/unrelevant tissue)
-#' @param chr chromosome of the variant (either format 1,2,..,X,Y or 
-#' chr1,..,chrX)
-#' @param sex sex of the sample (character: "male", "female", "m", "f")
-#' @param c_normal expected copy number at the position of the variant in 
-#' normal tissue, 1 for gonosomes in male samples, and 2 for male autosomes and 
-#' all chromosomes in female samples. (The function can also assess the 
-#' c_normal parameter by itself, but then the following two inputs must be 
-#' provided: chr and sex)
-#' @return A numeric value indicating the affecting copies for the variant
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
-#' @examples 
-#' library(dplyr)
-#' library(purrr)
-#' library(stringr)
-#' aff_som_copies(chr="chrX", af=0.67, tcn=2, purity=0.9, sex="female")
-#' @export
-aff_som_copies <- function(chr, af, tcn, purity, sex, c_normal=NULL){
-  purity <- check_purity(purity)
-  af <- check_af(af)
-  tcn <- check_tcn(tcn)
-  if(is.null(c_normal)){
-    sex <- check_sex(sex)
-    chr <- check_chr(chr)
-    if((sex=="male"&(chr=="X"|chr=="chrX"))|(chr=="Y"|chr=="chrY")){
-      c_normal <- 1
-    } else {
-      c_normal <- 2
-    }
-  } else {
-    c_normal <- check_ploidy(c_normal)
-  }
-  aff_cp <- af*(tcn+c_normal*((1/purity)-1))
-  return(aff_cp)
-  ## alternative: aff_cp = af*(tcn+c_normal/purity-c_normal)
-}
 #' @keywords internal
 #' description follows
 #' @rawNamespace import(dplyr, except = c(first,last)) 
@@ -708,11 +694,7 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
     return(NULL)
   } else {
     df_germ <- germSmallVars %>% 
-      IRanges::mergeByOverlaps(somCna) %>% as_tibble() %>% 
-      mutate(cna_type=ifelse(str_detect(cna_type, "LOH"), "LOH", "HZ")) %>%
-      select(chr=1, pos=2, gene, ref, alt, af, tcn, cna_type, tcn_assumed) %>%
-      mutate_at(.vars = c("af", "tcn"), .funs=as.numeric) %>%
-      rowwise() %>%
+      merge_sCNAs(., somCna) %>%
       mutate(
         origin="germline",
         class=define_class(ref, alt),
@@ -759,10 +741,9 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
   . <- NULL
   ## check if class i GRanges
   if(!is(somCna, "GRanges")){
-    error_message <- paste(
-      "input somCna must be a GRanges object; given input appears to be:", 
-      paste(unlist(class(somCna)), collapse = ";"))
-    stop(error_message)
+    stop(
+      "input somCna must be a GRanges object; given input appears to be: ", 
+      class(somCna))
   } else if(
     !(
       ("tcn" %in% names(GenomicRanges::elementMetadata(somCna))|
@@ -771,12 +752,10 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
        !is.null(colnameCnaType))
     )
     ){
-    error_message <- 
-      paste0("input somCna requires the following metadata columns: \'tcn\'",
+    stop("input somCna requires the following metadata columns: \'tcn\'",
              "and \'cna_type\'",
              "please rename relevant metadata or provide metadata colname by",
              "colnameTcn or colnameCnaType")
-    stop(error_message)
   } else {
     if(!is.null(colnameTcn)){
       GenomicRanges::elementMetadata(somCna)[,"tcn"] <- 
@@ -788,23 +767,19 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
     }
     somCna$tcn_assumed <- FALSE
     if(sum(is.na(GenomicRanges::elementMetadata(somCna)[,"cna_type"]))>0){
-      warning_message <- paste("cna_type column of input somCna contains", 
+      warning("cna_type column of input somCna contains", 
               sum(is.na(GenomicRanges::elementMetadata(somCna)[,"cna_type"])),
                     "NA values;\n  they will be taken as hetero-zygous\n")
-      warning(warning_message)
       GenomicRanges::elementMetadata(somCna)[,"cna_type"][
         which(
           is.na(GenomicRanges::elementMetadata(somCna)[,"cna_type"]))] <- NA
     } 
     if(assumeSomCnaGaps==TRUE){
       if(sum(is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"]))>0){
-        warning_message <- paste("tcn column of input somCna contains", 
+        warning("tcn column of input somCna contains", 
                       sum(
                         is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"])),
-                      "NA values;\n  they will be taken as ground ploidy:", 
-                      ploidy)
-        warning(warning_message)
-        
+                      "NA values;\n  they will be taken as ground ploidy:") 
         GenomicRanges::elementMetadata(somCna)[,"tcn_assumed"][
           which(is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"]))] <- TRUE
         GenomicRanges::elementMetadata(somCna)[,"tcn"][
@@ -815,14 +790,13 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
                                                sex, ploidy)
     } else {
       if(sum(is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"]))>0){
-        warning_message <- paste("tcn column of input somCna contains", 
+        warning("tcn column of input somCna contains", 
                       sum(
                         is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"])),
                       "NA values;\n  they will be excluded from the analysis.",
                       "Use assumeSomCnaGaps=TRUE to take ground ploidy",
                       "(ploidy) as tcn"
                     )
-        warning(warning_message)
         new_somCna <- somCna[which(!is.na(
           GenomicRanges::elementMetadata(somCna)[,"tcn"]))]
       } else {
@@ -835,6 +809,91 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
 }
 #' @keywords internal
 #' description follows
+nm_md <- function(obj){
+  return(names(GenomicRanges::elementMetadata(obj)))
+}
+#' @keywords internal
+#' description follows
+check_name_presence <- function(obj, type){
+  if(
+      (   
+        ("gene" %in% nm_md(obj)|
+         "GENE" %in% nm_md(obj)
+        )&
+        (type=="gene_model"|
+          (
+            ("af" %in% nm_md(obj)|
+             "AF" %in% nm_md(obj)
+            )&
+            ("ref" %in% nm_md(obj)|
+             "REF" %in% nm_md(obj)
+            )&
+            ("alt" %in% nm_md(obj)|
+             "ALT" %in% nm_md(obj)
+            )
+          )
+        )
+      )
+    ){
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+#' @keywords internal
+#' description follows
+assign_correct_colnames <- function(obj, type){
+  . <- NULL
+  col_gene <- str_match(
+    nm_md(obj), 
+    "gene|GENE") %>%
+    .[which(!is.na(.))]
+  GenomicRanges::elementMetadata(obj)[,"gene"] <- 
+    GenomicRanges::elementMetadata(obj)[,col_gene]  
+  if(type=="small_vars"){
+    col_af <- str_match(
+      nm_md(obj), "af|AF") %>%
+      .[which(!is.na(.))]
+    col_ref <- str_match(
+      nm_md(obj), "ref|REF") %>%
+      .[which(!is.na(.))]
+    col_alt <- str_match(
+      nm_md(obj), "alt|ALT") %>%
+      .[which(!is.na(.))]
+    GenomicRanges::elementMetadata(obj)[,"af"] <- 
+      GenomicRanges::elementMetadata(obj)[,col_af]
+    GenomicRanges::elementMetadata(obj)[,"ref"] <- 
+      GenomicRanges::elementMetadata(obj)[,col_ref]
+    GenomicRanges::elementMetadata(obj)[,"alt"] <- 
+      GenomicRanges::elementMetadata(obj)[,col_alt]
+    GenomicRanges::elementMetadata(obj)["mid"] <- 
+      seq_len(length(obj))    
+  }
+  return(obj)
+}
+
+general_gr_checks <- function(obj, type, lab){
+  if(!is(obj, "GRanges")){
+    stop("input ", lab, " must be a GRanges object;",
+         "given input appears to be:", 
+         class(obj))
+  } else if(!check_name_presence(obj, type)){
+    if(type=="small_vars"){
+      stop("input ", lab, " requires the following metadata columns:",
+           "\'gene\'/\'GENE\', \'ref\'/\'REF\',",
+           " \'alt\'/\'ALT\' and \'af\'/\'AF\'")      
+    } else {
+      stop(
+        "input geneModel requires the following metadata columns: ",
+        "\'gene\'/\'GENE\'")
+    }
+  } else {
+    return(assign_correct_colnames(obj, type))
+  }
+}
+
+#' @keywords internal
+#' description follows
 #' @rawNamespace import(dplyr, except = c(first,last)) 
 #' @import stringr
 #' @importFrom GenomicRanges GRanges elementMetadata
@@ -843,100 +902,8 @@ check_gr_gene_model <- function(geneModel){
   . <- NULL
   if(is.null(geneModel)){
     stop("input geneModel must not be NULL")
-  } else if(!is(geneModel, "GRanges")){
-      error_message <- paste(
-        "input geneModel must be a GRanges object;",
-        "given input appears to be:", 
-        paste(unlist(class(geneModel)), collapse = ";"))
-      stop(error_message)
-  } else if(!(("gene" %in% 
-                 names(GenomicRanges::elementMetadata(geneModel))|
-                 "GENE" %in% 
-                 names(GenomicRanges::elementMetadata(geneModel))))){
-      error_message <- 
-        paste0(
-          "input geneModel requires the following metadata columns:",
-          "\'gene\'/\'GENE\'")
-      stop(error_message)
   } else {
-    col_gene <- str_match(
-      names(GenomicRanges::elementMetadata(geneModel)), 
-      "gene|GENE") %>%
-      .[which(!is.na(.))]
-    GenomicRanges::elementMetadata(geneModel)[,"gene"] <- 
-      GenomicRanges::elementMetadata(geneModel)[,col_gene]
-    return(geneModel)
-  } 
-}
-#' @keywords internal
-#' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
-#' @importFrom GenomicRanges GRanges elementMetadata
-#' @importFrom methods is
-check_gr_som <- function(somSmallVars){
-  . <- NULL
-  if(!is.null(somSmallVars)){
-    if(!is(somSmallVars, "GRanges")){
-      error_message <- paste(
-        "input somSmallVars must be a GRanges object;",
-        "given input appears to be:", 
-        paste(unlist(class(somSmallVars)), collapse = ";"))
-      stop(error_message)
-    } else if(!(("gene" %in% 
-                 names(GenomicRanges::elementMetadata(somSmallVars))|
-                 "GENE" %in% 
-                 names(GenomicRanges::elementMetadata(somSmallVars)))&
-                ("af"   %in% 
-                 names(GenomicRanges::elementMetadata(somSmallVars))|
-                 "AF"   %in% 
-                 names(GenomicRanges::elementMetadata(somSmallVars)))&
-                ("ref"  %in% 
-                 names(GenomicRanges::elementMetadata(somSmallVars))|
-                 "REF"  %in% 
-                 names(GenomicRanges::elementMetadata(somSmallVars)))&
-                ("alt"  %in% 
-                 names(GenomicRanges::elementMetadata(somSmallVars))|
-                 "ALT"  %in% 
-                 names(GenomicRanges::elementMetadata(somSmallVars))))){
-      error_message <- 
-        paste0(
-          "input somSmallVars requires the following metadata columns:",
-          "\'gene\'/\'GENE\', \'ref\'/\'REF\',",
-          " \'alt\'/\'ALT\' and \'af\'/\'AF\'")
-      stop(error_message)
-    } else {
-      col_gene <- str_match(
-        names(GenomicRanges::elementMetadata(somSmallVars)), 
-        "gene|GENE") %>%
-        .[which(!is.na(.))]
-      col_af <- str_match(
-        names(GenomicRanges::elementMetadata(somSmallVars)), "af|AF") %>%
-        .[which(!is.na(.))]
-      col_ref <- str_match(
-        names(GenomicRanges::elementMetadata(somSmallVars)), "ref|REF") %>%
-        .[which(!is.na(.))]
-      col_alt <- str_match(
-        names(GenomicRanges::elementMetadata(somSmallVars)), "alt|ALT") %>%
-        .[which(!is.na(.))]
-      GenomicRanges::elementMetadata(somSmallVars)[,"gene"] <- 
-        GenomicRanges::elementMetadata(somSmallVars)[,col_gene]
-      GenomicRanges::elementMetadata(somSmallVars)[,"af"] <- 
-        GenomicRanges::elementMetadata(somSmallVars)[,col_af]
-      GenomicRanges::elementMetadata(somSmallVars)[,"ref"] <- 
-        GenomicRanges::elementMetadata(somSmallVars)[,col_ref]
-      GenomicRanges::elementMetadata(somSmallVars)[,"alt"] <- 
-        GenomicRanges::elementMetadata(somSmallVars)[,col_alt]
-      GenomicRanges::elementMetadata(somSmallVars)["mid"] <- 
-        seq_len(length(somSmallVars))
-      return(somSmallVars)
-    }
-  } else {
-    warning_message <- 
-      paste("Input somSmallVars empty/does not contain variants.",
-                  "Assuming there are no somatic small variants")
-    warning(warning_message)
-    return(NULL)
+    return(general_gr_checks(geneModel, "gene_model", "geneModel"))
   }
 }
 #' @keywords internal
@@ -945,70 +912,16 @@ check_gr_som <- function(somSmallVars){
 #' @import stringr
 #' @importFrom GenomicRanges GRanges elementMetadata
 #' @importFrom methods is
-check_gr_germ <- function(germSmallVars){
+check_gr_small_vars <- function(obj, origin){
   . <- NULL
-  if(!is.null(germSmallVars)){
-    if(!is(germSmallVars, "GRanges")){
-      error_message <- 
-        paste("input germSmallVars must be a GRanges object;",
-              "given input appears to be:",
-              paste(unlist(class(germSmallVars)), collapse = ";"))
-      stop(error_message)
-    } else if(!(("gene" %in% 
-                 names(GenomicRanges::elementMetadata(germSmallVars))|
-                 "GENE" %in% 
-                 names(GenomicRanges::elementMetadata(germSmallVars)))&
-                ("af"   %in% 
-                 names(GenomicRanges::elementMetadata(germSmallVars))|
-                 "AF"   %in% 
-                 names(GenomicRanges::elementMetadata(germSmallVars)))&
-                ("ref"  %in% 
-                 names(GenomicRanges::elementMetadata(germSmallVars))|
-                 "REF"  %in% 
-                 names(GenomicRanges::elementMetadata(germSmallVars)))&
-                ("alt"  %in% 
-                 names(GenomicRanges::elementMetadata(germSmallVars))|
-                 "ALT"  %in% 
-                 names(GenomicRanges::elementMetadata(germSmallVars))))){
-      error_message <- 
-        paste0(
-          "input germSmallVars requires the following metadata columns:",
-               " \'gene\', \'ref\', \'alt\', \'ACMG_class\'  and \'af\'")
-      stop(error_message)
-    } else {
-      col_gene <- str_match(
-        names(GenomicRanges::elementMetadata(germSmallVars)), 
-        "gene|GENE") %>%
-        .[which(!is.na(.))]
-      col_af <- str_match(
-        names(GenomicRanges::elementMetadata(germSmallVars)), 
-        "af|AF") %>%
-        .[which(!is.na(.))]
-      col_ref <- str_match(
-        names(GenomicRanges::elementMetadata(germSmallVars)), 
-        "ref|REF") %>%
-        .[which(!is.na(.))]
-      col_alt <- str_match(
-        names(GenomicRanges::elementMetadata(germSmallVars)), 
-        "alt|ALT") %>%
-        .[which(!is.na(.))]
-      GenomicRanges::elementMetadata(germSmallVars)[,"gene"] <- 
-        GenomicRanges::elementMetadata(germSmallVars)[,col_gene]
-      GenomicRanges::elementMetadata(germSmallVars)[,"af"] <- 
-        GenomicRanges::elementMetadata(germSmallVars)[,col_af]
-      GenomicRanges::elementMetadata(germSmallVars)[,"ref"] <- 
-        GenomicRanges::elementMetadata(germSmallVars)[,col_ref]
-      GenomicRanges::elementMetadata(germSmallVars)[,"alt"] <- 
-        GenomicRanges::elementMetadata(germSmallVars)[,col_alt]
-      GenomicRanges::elementMetadata(germSmallVars)["mid"] <- 
-        seq_len(length(germSmallVars))
-      return(germSmallVars)
-    }
-  }else {
-    warning_message <- paste(
-      "Input germSmallVars empty/does not contain variants.",
-      "Assuming there are no germline small variants")
-    warning(warning_message)
+  lab <- ifelse(origin=="somatic",
+                 "somSmallVars",
+                 "germSmallVars")
+  if(!is.null(obj)){
+    return(general_gr_checks(obj, "small_vars", lab))
+  } else {
+    warning("Input ", lab, " empty/does not contain variants. ",
+                  "Assuming there are no ", origin, " small variants")
     return(NULL)
   }
 }
@@ -1018,12 +931,10 @@ check_gr_germ <- function(germSmallVars){
 #' @import stringr
 check_purity <- function(purity){
   if(is.na(as.numeric(purity))){
-    error_message <- 
-      paste("input purity must be numeric or a character that can",
+    stop("input purity must be numeric or a character that can",
             "be converted to numeric;\n  ", purity, 
             "can not be converted to numeric")
-    stop(error_message)
-  } else if(!between(purity, 0, 1)){
+  } else if(!between(as.numeric(purity), 0, 1)){
     stop("input purity must be a numeric value between 0 and 1")
   } else {
     return(as.numeric(purity))
@@ -1036,14 +947,14 @@ check_purity <- function(purity){
 check_ploidy <- function(ploidy){
   if(is.null(ploidy)){
     return(NULL)
-  } else if(is.na(as.numeric(ploidy))){
-    error_message <- 
-      paste("input ploidy/c_normal must be numeric or a character that can",
-            "be converted to numeric;\n  ", ploidy, 
-            "can not be converted to numeric")
-    stop(error_message)
   } else {
-    return(as.numeric(ploidy))
+    if(is.na(as.numeric(ploidy))){
+      stop("input ploidy/c_normal must be numeric or a character that can",
+              "be converted to numeric;\n  ", ploidy, 
+              "can not be converted to numeric")
+    } else {
+      return(as.numeric(ploidy))
+    }
   }
 }
 #' @keywords internal
@@ -1054,11 +965,9 @@ check_sex <- function(sex){
   . <- NULL
   allowed_sex <- c("male", "m", "female", "f") %>% c(.,toupper(.))
   if(!sex %in% allowed_sex){
-    error_message <- 
-      paste("input sex must be one of", 
-            paste(allowed_sex, collapse = "\', \'") %>% 
-              paste0("\'", ., "\'"))
-    stop(error_message)
+    allowed_sex_to_print <- paste(allowed_sex, collapse = "\', \'") %>% 
+              paste0("\'", ., "\'")
+    stop("input sex must be one of ", allowed_sex_to_print)
   } else {
     sex <- tolower(sex)
     if(str_detect(sex, "f")){
@@ -1103,41 +1012,9 @@ check_rna <- function(bamRna){
   } else if(file.exists(bamRna)){
     return(bamRna)   
   } else {
-    warning_message <- paste("input bamRna does not exist:", bamRna,
+    warning("input bamRna does not exist:", bamRna,
                   "\nanalysis will be done without RNA reads\n")
-    warning(warning_message)
     return(NULL)
-  }
-}
-#' @keywords internal
-#' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
-#' @importFrom GenomicRanges GRanges elementMetadata
-#' @importFrom methods is
-check_refgen <- function(geneModel){
-  . <- NULL
-  if(!is(geneModel, "GRanges")){
-    error_message <- 
-      paste("input geneModel must be a GRanges object;",
-            "given input appears to be:", 
-            paste(unlist(class(geneModel)), collapse = ";"))
-    stop(error_message)
-  } else if(!("gene" %in% 
-              names(GenomicRanges::elementMetadata(geneModel)))){
-    error_message <- 
-      paste(
-        "input geneModel requires the following metadata",
-        "columns: \'gene\'")
-    stop(error_message)
-  } else {
-    col_gene <- str_match(
-      names(GenomicRanges::elementMetadata(geneModel)), 
-      "gene|GENE") %>%
-      .[which(!is.na(.))]
-    GenomicRanges::elementMetadata(geneModel)[,"gene"] <- 
-      GenomicRanges::elementMetadata(geneModel)[,col_gene]
-    return(geneModel)
   }
 }
 #' @keywords internal
@@ -1201,16 +1078,16 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
 #' @import tibble
 classify_reads <- function(line, bamDna, bamRna){
   dist <- abs(as.numeric(line[['pos1']])-as.numeric(line[['pos2']]))
-  ref_pos1 <- line[['pos1']] %>% as.numeric()
-  ref_pos2 <- line[['pos2']] %>% as.numeric()
-  ref_chr1 <- line[['chr1']] %>% as.character()
-  ref_chr2 <- line[['chr2']] %>% as.character()
-  ref_alt1 <- line[['alt1']] %>% as.character()
-  ref_alt2 <- line[['alt2']] %>% as.character()
-  ref_ref1 <- line[['ref1']] %>% as.character()
-  ref_ref2 <- line[['ref2']] %>% as.character()
-  ref_class1 <- line[['class1']] %>% as.character()
-  ref_class2 <- line[['class2']] %>% as.character()
+  ref_pos1 <- as.numeric(line[['pos1']])
+  ref_pos2 <- as.numeric(line[['pos2']])
+  ref_chr1 <- as.character(line[['chr1']])
+  ref_chr2 <- as.character(line[['chr2']])
+  ref_alt1 <- as.character(line[['alt1']])
+  ref_alt2 <- as.character(line[['alt2']])
+  ref_ref1 <- as.character(line[['ref1']])
+  ref_ref2 <- as.character(line[['ref2']])
+  ref_class1 <- as.character(line[['class1']])
+  ref_class2 <- as.character(line[['class2']])
   bam <- check_for_overlapping_reads(bamDna,
                                      bamRna,
                                      ref_chr1,
@@ -1302,14 +1179,14 @@ check_read_presence <- function(sub_comb, bamDna, bamRna){
 find_path <- function(still_present_muts, sub_checked_read_presence,
                       main_comb){
   . <- mut_id1 <- mut_id2 <- NULL
-  a_star_nodes <- sapply(still_present_muts, function(MUT){
+  a_star_nodes <- lapply(still_present_muts, function(MUT){
     rel_rows <- sub_checked_read_presence %>%
       filter(mut_id1==MUT|mut_id2==MUT)
     all_partners <- c(rel_rows$mut_id1, rel_rows$mut_id2) %>%
       .[which(!.==MUT)]
-    return(sapply(all_partners, function(x)return(1), simplify=FALSE) %>% 
+    return(lapply(all_partners, function(x)return(1)) %>% 
              unlist())
-  }, simplify=FALSE)
+  })
   path <- a_star_pathfinder(
     a_star_nodes,
     main_comb[["mut_id1"]],
@@ -1407,22 +1284,15 @@ finalize_snp_phasing <- function(final, main_comb){
   tcn2 <- main_comb[["tcn2"]]
   aff_copies1 <- main_comb[["aff_cp1"]]
   aff_copies2 <- main_comb[["aff_cp2"]]
-  mtcn <- min(as.numeric(tcn1), as.numeric(tcn2))
-  left_wt_copies <- ifelse(status=="diff",
-                           mtcn-sum(as.numeric(aff_copies1), 
-                                    as.numeric(aff_copies2)),
-                           mtcn-max(as.numeric(aff_copies1), 
-                                    as.numeric(aff_copies2)))
-  pre_score <- ifelse(status=="diff"&left_wt_copies<0.5,
-                      2, 1)
+  psc <- pre_scoring(tcn1, tcn2, status, aff_copies1, aff_copies2)
   RESULT <- tibble(
     comb=main_comb[['comb_id']],
     class_comb=paste(main_comb[['class1']], 
                      main_comb[['class2']], sep="-"),
     dist=as.numeric(main_comb[["distance"]]),
-    score=pre_score,
-    wt_cp=round(left_wt_copies,2),
-    tcn=round(mtcn,2),
+    score=psc$pre_score,
+    wt_cp=round(psc$left_wt_copies,2),
+    tcn=round(psc$mtcn,2),
     info="status defined after extended HP phasing",
     status=status,
     DNA_rds=0,
@@ -1592,7 +1462,7 @@ phase <- function(df_gene, bamDna, bamRna,
                   RESULT$wt_cp)
               } else {
                 ext_snp_info <- 
-                  "recombination imposiible: more than one diff status in path"
+                  "recombination impossible: more than one diff status in path"
               }
             } else {
               ext_snp_info <- "recombination imposiible: null status in path"
@@ -1627,7 +1497,7 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
                                       bamRna, showReadDetail,
                                       printLog, purity, vcf, distCutOff){
   if(printLog==TRUE){
-    cat("\n", GENE)
+    message(GENE)
   }
   gene <- pre_info <-  chr <-  pos <- wt_cp <-  mut_id <- status <- . <- 
     score <- comb <- dist <- tcn <- info <- NULL 
@@ -1649,13 +1519,12 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
         filter(wt_cp==min(.$wt_cp)) %>%
         ## if both vars have the same impac we just select the first
         .[1,]
-      warning_message <- paste(
+      warning(
           "more than one variant detected at position:", 
           VAR[["chr"]], ":", VAR[["pos"]],
           "\n  maybe an indel with shifted annotation of position?",
           "\nSelecting variant of highest relevance by lowest left wt-copies:",
           selected$mut_id)
-      warning(warning_message)
       to_remove <- df_gene_raw %>% 
         filter(chr==VAR[["chr"]],
                pos==VAR[["pos"]]) %>%
@@ -1691,7 +1560,7 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
       log_obj[['score']] <- 2
       log_obj[['info']] <- concern_info$pre_info                 
       log_obj[['tcn']] <- concern_info$tcn
-      log_obj[['aff_cp']] <- concern_info$aff_cp %>% as.numeric() 
+      log_obj[['aff_cp']] <- as.numeric(concern_info$aff_cp) 
       log_obj[['class']] <- paste0(origin, class)
       catt(printLog, 1, c("all copies affected by variant:", 
             concern_info$mut_id))
@@ -1700,7 +1569,7 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
       log_obj[['score']] <- 1
       log_obj[['info']] <- df_gene$pre_info
       log_obj[['tcn']] <- df_gene$tcn
-      log_obj[['aff_cp']] <- df_gene$aff_cp %>% as.numeric()
+      log_obj[['aff_cp']] <- as.numeric(df_gene$aff_cp)
       log_obj[['class']] <- paste0(get_classification(df_gene))
       catt(printLog, 1, "1 variant detected:")
       catt(printLog, 1, df_gene$pre_info)
@@ -1728,7 +1597,7 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
         log_obj[['score']] <- all_comb$score
         log_obj[['info']] <- all_comb$info
         log_obj[['tcn']] <- all_comb$tcn
-        log_obj[['aff_cp']] <- all_comb$tcn-all_comb$wt_cp %>% as.numeric()
+        log_obj[['aff_cp']] <- as.numeric(all_comb$tcn-all_comb$wt_cp)
         log_obj[['class']] <- paste("comb:", all_comb$comb)
       } else if(max(all_comb$score)==2){
         most_important_comb <- all_comb %>% 
@@ -1822,14 +1691,13 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
   } 
   if(printLog==TRUE){
     end_gene_eval <- Sys.time()
-    log_message <- paste("~", round(
+    message("~", round(
                     as.numeric(
                       difftime(
                         end_gene_eval, 
                         start_gene_eval,
                         units="secs")
                       ),3), "s") 
-    cat("\n", log_message)
   }
   return(zygosity_gene)
 }
@@ -1894,10 +1762,8 @@ combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
 #' @import stringr
 check_opt_assgap <- function(assumeSomCnaGaps, ploidy){
   if(assumeSomCnaGaps==TRUE&is.null(ploidy)){
-    warning_message <- 
-      paste("somatic CNA gaps can only be assumed if input ploidy is",
+    warning("somatic CNA gaps can only be assumed if input ploidy is",
             "provided. Provide ploidy=2 to assume diploid case")
-    warning(warning_message)
     return(FALSE)
   } else {
     return(assumeSomCnaGaps)
@@ -1908,11 +1774,9 @@ check_opt_assgap <- function(assumeSomCnaGaps, ploidy){
 #' @import stringr
 check_opt_incdel <- function(includeIncompleteDel, ploidy){
   if(includeIncompleteDel==TRUE&is.null(ploidy)){
-    warning_message <- 
-      paste("Large scale deletions cannot be included without ploidy",
+    warning("Large scale deletions cannot be included without ploidy",
                 "Please provide input ploidy. Provide ploidy=2",
                 "to assume diploid case")
-    warning(warning_message)
     return(FALSE)
   } else {
     return(includeIncompleteDel)
@@ -1935,14 +1799,13 @@ combine_main_variant_tables <- function(df_germ, df_som, df_homdels,
   df_all_mutations <- df_all_mutations_unfiltered %>%
     filter(gene %in% templateGenes)
   if(nrow(df_all_mutations_unfiltered)!=nrow(df_all_mutations)){
-    warning_message <- paste(
+    warning(
       abs(nrow(df_all_mutations_unfiltered)-nrow(df_all_mutations)),
       "variants in genes not found in reference genome annotation",
       "(geneModel). They are removed from the analysis.",
       "Please provide a annotation that contains every gene from the",
       "variant inputs"
     )
-    warning(warning_message)
   }
   return(df_all_mutations)
 }
@@ -2124,10 +1987,10 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
 #'   geneModel = reference,
 #'   bamDna = bamfile
 #' )
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
-#' @importFrom GenomicRanges GRanges elementMetadata
+#' @importFrom stringr %>%
+#' @importFrom IRanges subsetByOverlaps
 #' @importFrom purrr compact
+#' @importFrom dplyr bind_rows nth select
 #' @export
 predict_zygosity <- function(purity, 
                              sex,
@@ -2155,8 +2018,8 @@ predict_zygosity <- function(purity,
     som_covered <- germ_covered <- final_phasing_info <- 
     combined_snp_phasing <- NULL
   ## check input for valid format
-  somSmallVars <- check_gr_som(somSmallVars)
-  germSmallVars <- check_gr_germ(germSmallVars)
+  somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
+  germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
   purity <- check_purity(purity)
   ploidy <- check_ploidy(ploidy)
   sex <- check_sex(sex)
@@ -2170,17 +2033,15 @@ predict_zygosity <- function(purity,
   includeHomoDel <- check_opt_incdel(includeHomoDel, ploidy)
   bamRna <- check_rna(bamRna)
   vcf <- check_vcf(vcf)
-  templateGenes <- GenomicRanges::elementMetadata(geneModel)[["gene"]]
+  templateGenes <- geneModel$gene
   ## get variants not covered by CNV input
   if(!is.null(somSmallVars)){
-    gr_som_cov <- somSmallVars %>%
-      IRanges::subsetByOverlaps(somCna) 
-    som_covered <- GenomicRanges::elementMetadata(gr_som_cov)[["mid"]]
+    gr_som_cov <- subsetByOverlaps(somSmallVars, somCna) 
+    som_covered <- gr_som_cov$mid
   }
   if(!is.null(germSmallVars)){
-    gr_germ_cov <- germSmallVars %>%
-      IRanges::subsetByOverlaps(somCna) 
-    germ_covered <- GenomicRanges::elementMetadata(gr_germ_cov)[["mid"]]
+    gr_germ_cov <- subsetByOverlaps(germSmallVars, somCna) 
+    germ_covered <- gr_germ_cov$mid
   }
   combined_uncovered <- combine_uncovered_input_variants(somSmallVars, 
                                                          germSmallVars,
@@ -2218,10 +2079,10 @@ predict_zygosity <- function(purity,
       bind_rows()
     final_result_list <- lapply(result_list, nth, n=2) %>% compact()
     if(length(final_result_list)!=0){
-      final_phasing_info <- lapply(final_result_list, dplyr::last) %>% 
+      final_phasing_info <- lapply(final_result_list, nth, n=2) %>% 
         compact() %>% 
         bind_rows() 
-      final_output <- lapply(final_result_list, dplyr::first) %>% 
+      final_output <- lapply(final_result_list, nth, n=1) %>% 
         bind_rows() %>%
         select(gene, status, info)
       combined_read_details <- lapply(result_list, nth, n=3) %>% compact() %>%
