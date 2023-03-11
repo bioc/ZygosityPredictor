@@ -41,15 +41,15 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2){
   } else {
     ## combine all ranges and check for ref_pos2
     all_reads <- c(
-      GenomicAlignments::first(all_covering_read_pairs) %>%
-        GenomicRanges::GRanges(),
-      GenomicAlignments::last(all_covering_read_pairs) %>%
-        GenomicRanges::GRanges()
+      first(all_covering_read_pairs) %>%
+        GRanges(),
+      last(all_covering_read_pairs) %>%
+        GRanges()
     )
     
     shared_read_pairs <- all_reads %>%
-      IRanges::subsetByOverlaps(.,ref_gr2) %>%
-      GenomicRanges::elementMetadata(.) %>%
+      subsetByOverlaps(.,ref_gr2) %>%
+      elementMetadata(.) %>%
       .[["qname"]] %>%
       unique()
     
@@ -74,10 +74,10 @@ allowed_inputs <- function(which_one){
   return(type_list[[which_one]])
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>%
 #' @importFrom GenomicRanges GRanges elementMetadata
 #' @importFrom purrr compact
+#' @importFrom dplyr summarize pull
 insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
   seqnames <- start <- end <- tcn <- . <- NULL
   if(sex=="male"){
@@ -109,7 +109,7 @@ insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
         filter(seqnames==CHR) %>%
         select(seqnames, start=mn, end=mx) %>% 
         mutate(tcn=ploidy, cna_type="no CNA type annotated") %>%
-        GenomicRanges::GRanges() %>%
+        GRanges() %>%
         return()
     } else {
       if(all_chr[1,]$start<mn){mn <- all_chr[1,]$start}
@@ -132,12 +132,12 @@ insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
         compact()
       
       if(length(to_insert)==0){
-        GenomicRanges::GRanges(all_chr) %>% return()
+        GRanges(all_chr) %>% return()
       } else {
-        return(c(GenomicRanges::GRanges(all_chr),  bind_rows(to_insert) %>%
+        return(c(GRanges(all_chr),  bind_rows(to_insert) %>%
                    mutate(chr=CHR, tcn=ploidy, 
                           cna_type="no CNA type annotated") %>%
-                   GenomicRanges::GRanges()))        
+                   GRanges()))        
       }
     }
   })
@@ -158,9 +158,10 @@ pre_scoring <- function(tcn1, tcn2, status, aff_copies1, aff_copies2){
               pre_score=pre_score))
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>%
 #' @importFrom tibble column_to_rownames
+#' @importFrom dplyr as_tibble group_by mutate tibble tally 
+#' @importFrom purrr set_names
 classify_combination <- function(classified_reads, purity, eval_full, printLog,
                                  tcn1, tcn2, aff_copies1, 
                                  aff_copies2){
@@ -281,9 +282,9 @@ classify_combination <- function(classified_reads, purity, eval_full, printLog,
   return(status_table)
 }  
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>% str_detect str_match_all str_sub
 #' @importFrom tibble rownames_to_column
+#' @importFrom dplyr mutate left_join bind_rows mutate tibble filter
 make_read_overview <- function(read_start, seq, cigar){
   . <- element <- width <- end <- NULL
   raw_cigs <- str_match_all(cigar, 
@@ -323,8 +324,8 @@ make_read_overview <- function(read_start, seq, cigar){
   return(full)
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>% str_replace str_sub
+#' @importFrom dplyr between case_when rowwise filter
 check_mut_presence <- function(read_structure, ref_pos,
                                   ref_alt, ref_ref, ref_class){
   map_start <- map_end <- . <- NULL
@@ -383,10 +384,11 @@ check_mut_presence <- function(read_structure, ref_pos,
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
+#' @importFrom stringr %>%
 #' @importFrom tibble column_to_rownames rownames_to_column
 #' @importFrom purrr set_names
+#' @importFrom dplyr case_when bind_rows as_tibble mutate
+#' @importFrom GenomicRanges seqnames
 core_tool <- function(qname, bam, 
                       ref_pos1, ref_pos2,
                       ref_alt1, ref_alt2, 
@@ -394,7 +396,7 @@ core_tool <- function(qname, bam,
                       ref_class1, ref_class2){
   . <- NULL
   paired_reads <- bam[which(bam$qname==qname)] %>%
-    .[which(as.character(GenomicRanges::seqnames(.)) %in% 
+    .[which(as.character(seqnames(.)) %in% 
               allowed_inputs("chrom_names"))] %>%
     as_tibble() %>%
     rownames_to_column("mate")
@@ -427,8 +429,7 @@ core_tool <- function(qname, bam,
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
+#' @importFrom dplyr between
 check_af <- function(af){
   num_af <- as.numeric(af)
   if(is.na(num_af)){
@@ -441,8 +442,6 @@ check_af <- function(af){
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
 check_tcn <- function(tcn){
   num_tcn <- as.numeric(tcn)
   if(is.na(num_tcn)){
@@ -481,8 +480,6 @@ check_chr <- function(chr){
 #' library(purrr)
 #' library(stringr)
 #' aff_germ_copies(af=0.67, tcn=2, purity=0.9, chr="chrX", sex="female")
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
 aff_germ_copies <- function(chr, af, tcn, purity, sex, 
                             c_normal=NULL){
   cv <- formula_checks(chr, af, tcn, purity, sex, c_normal)
@@ -505,8 +502,6 @@ aff_germ_copies <- function(chr, af, tcn, purity, sex,
 #' c_normal parameter by itself, but then the following two inputs must be 
 #' provided: chr and sex)
 #' @return A numeric value indicating the affecting copies for the variant
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
 #' @examples 
 #' library(dplyr)
 #' library(purrr)
@@ -538,10 +533,14 @@ formula_checks <- function(chr, af, tcn, purity, sex, c_normal){
   }
   return(list(af=af, tcn=tcn, purity=purity, c_normal=c_normal))
 }
+#' @keywords internal
+#' @importFrom IRanges mergeByOverlaps
+#' @importFrom dplyr mutate select mutate_at rowwise
+#' @importFrom stringr str_detect
 merge_sCNAs <- function(obj, somCna){
   alt <- af <- tcn <- tcn_assumed <- cna_type <- gene <- ref <- NULL
   obj %>%
-    IRanges::mergeByOverlaps(somCna) %>% as_tibble() %>%
+    mergeByOverlaps(somCna) %>% as_tibble() %>%
     mutate(cna_type=ifelse(str_detect(cna_type, "LOH"), "LOH", "HZ")) %>%
     select(chr=1, pos=2, gene, ref, alt, af, tcn, cna_type, tcn_assumed) %>%
     mutate_at(.vars = c("af", "tcn"), .funs=as.numeric) %>%
@@ -550,10 +549,10 @@ merge_sCNAs <- function(obj, somCna){
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
+#' @importFrom stringr %>% str_detect
 #' @importFrom GenomicRanges GRanges elementMetadata
 #' @importFrom IRanges mergeByOverlaps
+#' @importFrom dplyr mutate filter
 prepare_somatic_variant_table <- function(somSmallVars, templateGenes, 
                                           somCna, purity, sex){
   cna_type <- gene <- ref <- alt <- af <- tcn <- cna_type <- chr <- 
@@ -569,7 +568,8 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
         aff_cp = aff_som_copies(chr, af, tcn, purity, sex),
         wt_cp = tcn-aff_cp,
         pre_info = 
-          ifelse(base::isTRUE(str_detect(cna_type,'LOH')), 
+          #ifelse(base::isTRUE(str_detect(cna_type,'LOH')), 
+          ifelse(isTRUE(str_detect(cna_type,'LOH')),
             ifelse(wt_cp<=0.5,
               paste(
                   'somatic-variant -> LOH -> left wt copies',round(wt_cp,2),
@@ -601,11 +601,11 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
-#' @importFrom GenomicRanges GRanges elementMetadata
+#' @importFrom stringr %>% str_detect
+#' @importFrom GenomicRanges GRanges
 #' @importFrom IRanges subsetByOverlaps
 #' @importFrom purrr compact
+#' @importFrom dplyr filter as_tibble select bind_rows mutate
 extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE, 
                                        byTcn, sex, ploidy, include_dels){
   tcn <- cna_type <- seqnames <- gene <- . <- NULL
@@ -644,9 +644,9 @@ extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE,
       return(NULL)
     } else {
       merged_CNAs <- apply(relevant_CNAs, 1, function(CNV){
-        GR_single_CNV <- GenomicRanges::GRanges(as_tibble(t(CNV)))
+        GR_single_CNV <- GRanges(as_tibble(t(CNV)))
         suppressWarnings(
-        rel <- IRanges::subsetByOverlaps(geneModel, GR_single_CNV) %>%
+        rel <- subsetByOverlaps(geneModel, GR_single_CNV) %>%
           as_tibble()
         )
         if(nrow(rel)==0){
@@ -683,10 +683,8 @@ extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE,
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
-#' @importFrom GenomicRanges GRanges elementMetadata
-#' @importFrom IRanges mergeByOverlaps
+#' @importFrom stringr %>%
+#' @importFrom dplyr mutate select
 prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
   cna_type <- gene <- ref <- alt <- af <- tcn <- cna_type <- chr <- aff_cp <- 
     origin <- pos <- wt_cp <- pre_info <- . <- tcn_assumed <- NULL
@@ -701,7 +699,7 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
         aff_cp = aff_germ_copies(chr, af, tcn, purity, sex, 1),
         wt_cp = tcn-aff_cp,
         pre_info = 
-          ifelse(base::isTRUE(cna_type=='LOH'),
+          ifelse(isTRUE(cna_type=='LOH'),
             ifelse(af>=0.5,
                  paste(
                    'germline-variant -> LOH ->',
@@ -731,9 +729,8 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
-#' @importFrom GenomicRanges GRanges elementMetadata
+#' @importFrom stringr %>%
+#' @importFrom GenomicRanges elementMetadata elementMetadata<-
 #' @importFrom methods is
 check_somCna <- function(somCna, geneModel, sex, ploidy,
                          assumeSomCnaGaps, colnameTcn, 
@@ -746,9 +743,9 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
       class(somCna))
   } else if(
     !(
-      ("tcn" %in% names(GenomicRanges::elementMetadata(somCna))|
+      ("tcn" %in% names(elementMetadata(somCna))|
        !is.null(colnameTcn))&
-      ("cna_type" %in% names(GenomicRanges::elementMetadata(somCna))|
+      ("cna_type" %in% names(elementMetadata(somCna))|
        !is.null(colnameCnaType))
     )
     ){
@@ -758,47 +755,47 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
              "colnameTcn or colnameCnaType")
   } else {
     if(!is.null(colnameTcn)){
-      GenomicRanges::elementMetadata(somCna)[,"tcn"] <- 
-        GenomicRanges::elementMetadata(somCna)[,colnameTcn]
+      elementMetadata(somCna)[,"tcn"] <- 
+        elementMetadata(somCna)[,colnameTcn]
     }
     if(!is.null(colnameTcn)){
-      GenomicRanges::elementMetadata(somCna)[,"cna_type"] <- 
-        GenomicRanges::elementMetadata(somCna)[,colnameCnaType]
+      elementMetadata(somCna)[,"cna_type"] <- 
+        elementMetadata(somCna)[,colnameCnaType]
     }
     somCna$tcn_assumed <- FALSE
-    if(sum(is.na(GenomicRanges::elementMetadata(somCna)[,"cna_type"]))>0){
+    if(sum(is.na(elementMetadata(somCna)[,"cna_type"]))>0){
       warning("cna_type column of input somCna contains", 
-              sum(is.na(GenomicRanges::elementMetadata(somCna)[,"cna_type"])),
+              sum(is.na(elementMetadata(somCna)[,"cna_type"])),
                     "NA values;\n  they will be taken as hetero-zygous\n")
-      GenomicRanges::elementMetadata(somCna)[,"cna_type"][
+      elementMetadata(somCna)[,"cna_type"][
         which(
-          is.na(GenomicRanges::elementMetadata(somCna)[,"cna_type"]))] <- NA
+          is.na(elementMetadata(somCna)[,"cna_type"]))] <- NA
     } 
     if(assumeSomCnaGaps==TRUE){
-      if(sum(is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"]))>0){
+      if(sum(is.na(elementMetadata(somCna)[,"tcn"]))>0){
         warning("tcn column of input somCna contains", 
                       sum(
-                        is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"])),
+                        is.na(elementMetadata(somCna)[,"tcn"])),
                       "NA values;\n  they will be taken as ground ploidy:") 
-        GenomicRanges::elementMetadata(somCna)[,"tcn_assumed"][
-          which(is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"]))] <- TRUE
-        GenomicRanges::elementMetadata(somCna)[,"tcn"][
-          which(is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"]))] <- 
+        elementMetadata(somCna)[,"tcn_assumed"][
+          which(is.na(elementMetadata(somCna)[,"tcn"]))] <- TRUE
+        elementMetadata(somCna)[,"tcn"][
+          which(is.na(elementMetadata(somCna)[,"tcn"]))] <- 
           ploidy
       }
       new_somCna <- insert_missing_cnv_regions(somCna, geneModel, 
                                                sex, ploidy)
     } else {
-      if(sum(is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"]))>0){
+      if(sum(is.na(elementMetadata(somCna)[,"tcn"]))>0){
         warning("tcn column of input somCna contains", 
                       sum(
-                        is.na(GenomicRanges::elementMetadata(somCna)[,"tcn"])),
+                        is.na(elementMetadata(somCna)[,"tcn"])),
                       "NA values;\n  they will be excluded from the analysis.",
                       "Use assumeSomCnaGaps=TRUE to take ground ploidy",
                       "(ploidy) as tcn"
                     )
         new_somCna <- somCna[which(!is.na(
-          GenomicRanges::elementMetadata(somCna)[,"tcn"]))]
+          elementMetadata(somCna)[,"tcn"]))]
       } else {
         new_somCna <- somCna
       }
@@ -809,8 +806,9 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
 }
 #' @keywords internal
 #' description follows
+#' @importFrom GenomicRanges elementMetadata
 nm_md <- function(obj){
-  return(names(GenomicRanges::elementMetadata(obj)))
+  return(names(elementMetadata(obj)))
 }
 #' @keywords internal
 #' description follows
@@ -842,14 +840,16 @@ check_name_presence <- function(obj, type){
 }
 #' @keywords internal
 #' description follows
+#' @importFrom stringr str_match
+#' @importFrom GenomicRanges elementMetadata elementMetadata<-
 assign_correct_colnames <- function(obj, type){
   . <- NULL
   col_gene <- str_match(
     nm_md(obj), 
     "gene|GENE") %>%
     .[which(!is.na(.))]
-  GenomicRanges::elementMetadata(obj)[,"gene"] <- 
-    GenomicRanges::elementMetadata(obj)[,col_gene]  
+  elementMetadata(obj)[,"gene"] <- 
+    elementMetadata(obj)[,col_gene]  
   if(type=="small_vars"){
     col_af <- str_match(
       nm_md(obj), "af|AF") %>%
@@ -860,13 +860,13 @@ assign_correct_colnames <- function(obj, type){
     col_alt <- str_match(
       nm_md(obj), "alt|ALT") %>%
       .[which(!is.na(.))]
-    GenomicRanges::elementMetadata(obj)[,"af"] <- 
-      GenomicRanges::elementMetadata(obj)[,col_af]
-    GenomicRanges::elementMetadata(obj)[,"ref"] <- 
-      GenomicRanges::elementMetadata(obj)[,col_ref]
-    GenomicRanges::elementMetadata(obj)[,"alt"] <- 
-      GenomicRanges::elementMetadata(obj)[,col_alt]
-    GenomicRanges::elementMetadata(obj)["mid"] <- 
+    elementMetadata(obj)[,"af"] <- 
+      elementMetadata(obj)[,col_af]
+    elementMetadata(obj)[,"ref"] <- 
+      elementMetadata(obj)[,col_ref]
+    elementMetadata(obj)[,"alt"] <- 
+      elementMetadata(obj)[,col_alt]
+    elementMetadata(obj)["mid"] <- 
       seq_len(length(obj))    
   }
   return(obj)
@@ -894,10 +894,6 @@ general_gr_checks <- function(obj, type, lab){
 
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
-#' @importFrom GenomicRanges GRanges elementMetadata
-#' @importFrom methods is
 check_gr_gene_model <- function(geneModel){
   . <- NULL
   if(is.null(geneModel)){
@@ -908,10 +904,6 @@ check_gr_gene_model <- function(geneModel){
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
-#' @importFrom GenomicRanges GRanges elementMetadata
-#' @importFrom methods is
 check_gr_small_vars <- function(obj, origin){
   . <- NULL
   lab <- ifelse(origin=="somatic",
@@ -926,9 +918,8 @@ check_gr_small_vars <- function(obj, origin){
   }
 }
 #' @keywords internal
-#' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
+#' description follows 
+#' @importFrom dplyr between
 check_purity <- function(purity){
   if(is.na(as.numeric(purity))){
     stop("input purity must be numeric or a character that can",
@@ -942,8 +933,6 @@ check_purity <- function(purity){
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
 check_ploidy <- function(ploidy){
   if(is.null(ploidy)){
     return(NULL)
@@ -959,8 +948,7 @@ check_ploidy <- function(ploidy){
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
+#' @importFrom stringr str_detect
 check_sex <- function(sex){
   . <- NULL
   allowed_sex <- c("male", "m", "female", "f") %>% c(.,toupper(.))
@@ -978,9 +966,7 @@ check_sex <- function(sex){
   }
 }
 #' @keywords internal
-#' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
+#' description follows 
 check_bam <- function(bamDna){
   if(file.exists(bamDna)){
     return(bamDna)
@@ -990,8 +976,6 @@ check_bam <- function(bamDna){
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
 check_vcf <- function(vcf){
   if(is.null(vcf)){
     return(NULL)
@@ -1003,8 +987,6 @@ check_vcf <- function(vcf){
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
 check_rna <- function(bamRna){
   if(is.null(bamRna)){
     message("no RNA file provided: Analysis will be done without RNA reads")
@@ -1019,8 +1001,7 @@ check_rna <- function(bamRna){
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
+#' @importFrom stringr str_split
 #' @importFrom purrr map_chr set_names
 make_phasing_combinations <- function(df_mut_to_combine){
   . <- pos1 <- pos2 <- mut_id1 <- mut_id2 <- NULL
@@ -1043,6 +1024,8 @@ make_phasing_combinations <- function(df_mut_to_combine){
     .[order(.$distance),] %>%
     mutate(comb_id=paste(mut_id1, mut_id2, sep='-'))
 }
+#' @keywords internal
+#' description follows
 check_for_overlapping_reads <- function(bamDna, bamRna,
                                         ref_chr1, 
                                         ref_chr2, 
@@ -1073,9 +1056,8 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
   return(c(dna_bam, rna_bam))
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
-#' @import tibble
+#' @importFrom stringr %>%
+#' @importFrom dplyr tibble 
 classify_reads <- function(line, bamDna, bamRna){
   dist <- abs(as.numeric(line[['pos1']])-as.numeric(line[['pos2']]))
   ref_pos1 <- as.numeric(line[['pos1']])
@@ -1112,30 +1094,34 @@ classify_reads <- function(line, bamDna, bamRna){
   } 
   return(classified_reads)
 }
+#' @keywords internal
+#' @importFrom stringr %>%
 #' @importFrom Rsamtools TabixFile
 #' @importFrom VariantAnnotation readVcf
 #' @importFrom DelayedArray rowRanges
+#' @importFrom GenomicRanges GRanges
+#' @importFrom dplyr rename arrange as_tibble left_join mutate ungroup rowwise ungroup select
 check_for_snps_between_main_muts <- function(main_comb, vcf, df_gene){
   . <- ALT <- REF <- end <- start <- seqnames <- chr <- pos <- mut_id <- NULL
   pos_minor <- min(main_comb[['pos2']],
                    main_comb[['pos1']])
   pos_major <- max(main_comb[['pos2']],
                    main_comb[['pos1']])
-  gr_roi <- GenomicRanges::GRanges(paste0(main_comb[["chr1"]], ":",
+  gr_roi <- GRanges(paste0(main_comb[["chr1"]], ":",
                                           pos_minor, "-", pos_major))
   vars_in_between_raw <- lapply(vcf, function(VCF){
-    tab_vcf <- Rsamtools::TabixFile(VCF)
+    tab_vcf <- TabixFile(VCF)
     vcf_region <- 
-      VariantAnnotation::readVcf(tab_vcf, "hg19", 
+      readVcf(tab_vcf, "hg19", 
                                  param=gr_roi) %>%
-      DelayedArray::rowRanges() %>%
+      #DelayedArray::rowRanges() %>%
+      rowRanges() %>%
       return()
   }) %>%
     Reduce(function(x,y)c(x,y),.) %>%
     as_tibble() %>%
     ## maybe improve handling of more entries in DNAstringLists
     ## now it takes the first
-    #mutate(ALT=lapply(ALT, dplyr::first)) %>%
     mutate(ALT=unlist(lapply(ALT, function(x){as.character(x[[1]][1])}))) %>%
     rowwise() %>%
     mutate(ALT=as.character(ALT),
@@ -1156,9 +1142,8 @@ check_for_snps_between_main_muts <- function(main_comb, vcf, df_gene){
   return(vars_in_between_raw)
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
-#' @import tibble
+#' @importFrom stringr %>%
+#' @importFrom dplyr mutate as_tibble
 check_read_presence <- function(sub_comb, bamDna, bamRna){
   bam_raw <- check_for_overlapping_reads(bamDna, bamRna,
                                          sub_comb[["chr1"]],
@@ -1176,6 +1161,7 @@ check_read_presence <- function(sub_comb, bamDna, bamRna){
   rl <- list(rt=res_tibble, bam=bam)
   return(rl)
 }
+#' @keywords internal
 find_path <- function(still_present_muts, sub_checked_read_presence,
                       main_comb){
   . <- mut_id1 <- mut_id2 <- NULL
@@ -1194,8 +1180,8 @@ find_path <- function(still_present_muts, sub_checked_read_presence,
   return(path)
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>% str_split
+#' @importFrom dplyr bind_rows mutate_at
 #' @importFrom purrr compact
 phase_along_path <- function(path, sub_checked_read_presence, bam_raw,
                              purity, printLog){
@@ -1250,8 +1236,8 @@ phase_along_path <- function(path, sub_checked_read_presence, bam_raw,
   return(sub_fin_comb)
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>% str_count str_replace_all str_detect
+#' @importFrom dplyr desc
 recombine_phasing_results <- function(non_null, main_comb){
   status <- comb_id <- f <- l <- fin_comb <- NULL
   sames <- 
@@ -1276,8 +1262,7 @@ recombine_phasing_results <- function(non_null, main_comb){
   return(final)
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom dplyr tibble
 finalize_snp_phasing <- function(final, main_comb){
   status <- unique(final$status)
   tcn1 <- main_comb[["tcn1"]]
@@ -1308,8 +1293,8 @@ finalize_snp_phasing <- function(final, main_comb){
   return(RESULT)
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>%
+#' @importFrom dplyr mutate
 return_null_result <- function(main_comb, bamRna, ext_snp_info){
   RESULT <- rep(0, 9) %>% t() %>% as.data.frame() %>% 
     set_names(c("both", "none", "mut1", "mut2", "dev_var", 
@@ -1335,10 +1320,9 @@ return_null_result <- function(main_comb, bamRna, ext_snp_info){
 } 
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
-#' @import datastructures
+#' @importFrom stringr %>%
 #' @importFrom purrr map_chr set_names
+#' @importFrom dplyr mutate nth select filter bind_rows
 phase <- function(df_gene, bamDna, bamRna, 
                   showReadDetail, purity, vcf, distCutOff, printLog){
   pos1 <- pos2 <- mut_id1 <- mut_id2 <- qname.first <- result <- . <- origin <- 
@@ -1411,11 +1395,11 @@ phase <- function(df_gene, bamDna, bamRna,
                                                 check_read_presence, 
                                                 bamDna, bamRna)
         sub_checked_read_presence <- lapply(sub_checked_read_presence_list,
-                                            dplyr::first) %>%
+                                            nth, n=1) %>%
           bind_rows() %>%
           filter(nreads>0)
         bam_raw <- lapply(sub_checked_read_presence_list,
-                          dplyr::last)
+                          nth, n=2)
         ## now check with the remaining ones if there is a connection
         ## first check if the main variants are still there
         still_present_muts <- c(sub_checked_read_presence$mut_id1,
@@ -1491,8 +1475,8 @@ phase <- function(df_gene, bamDna, bamRna,
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
+#' @importFrom stringr %>% str_replace_all str_count str_detect
+#' @importFrom dplyr as_tibble group_by relocate bind_rows left_join select tally mutate filter nth relocate
 predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna, 
                                       bamRna, showReadDetail,
                                       printLog, purity, vcf, distCutOff){
@@ -1500,7 +1484,7 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
     message(GENE)
   }
   gene <- pre_info <-  chr <-  pos <- wt_cp <-  mut_id <- status <- . <- 
-    score <- comb <- dist <- tcn <- info <- NULL 
+    score <- comb <- dist <- tcn <- info <- n <- NULL 
   start_gene_eval <- Sys.time()
   pre_df_gene <- df_all_mutations %>% filter(gene==GENE)    
   df_gene_raw <- pre_df_gene%>%
@@ -1578,18 +1562,18 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
             "variants detected: Initializing haplotype phasing"))
       all_comb_raw <- phase(df_gene, bamDna, bamRna, showReadDetail,
                             purity, vcf, distCutOff, printLog)
-      all_comb <- lapply(all_comb_raw, dplyr::first) %>% 
+      all_comb <- lapply(all_comb_raw, nth, n=1) %>% 
         Reduce(function(x,y)rbind(x,y),.) %>%
         mutate(gene=GENE)
       all_comb_to_export <- all_comb %>% 
         select(-score) %>%
-        dplyr::relocate(gene, comb, dist, tcn, 
+        relocate(gene, comb, dist, tcn, 
                         status, left_wt_cp=wt_cp)
-      snp_phasing <- lapply(all_comb_raw, dplyr::nth, n=3) %>%   
+      snp_phasing <- lapply(all_comb_raw, nth, n=3) %>%   
         bind_rows() %>%
         mutate(gene=GENE)
       if(showReadDetail==TRUE){
-        read_details <- lapply(all_comb_raw, dplyr::nth, n=2) %>%   
+        read_details <- lapply(all_comb_raw, nth, n=2) %>%   
           bind_rows() %>%
           mutate(gene=GENE)        
       }
@@ -1702,9 +1686,8 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
   return(zygosity_gene)
 }
 #' @keywords internal
-#' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
+#' description follows 
+#' @importFrom dplyr case_when
 get_classification <- function(data){
   case_when(
     data$class=="homdel" ~ "homdel",
@@ -1716,8 +1699,7 @@ get_classification <- function(data){
 }
 #' @keywords internal
 #' description follows
-#' @rawNamespace import(dplyr, except = c(first,last)) 
-#' @import stringr
+#' @importFrom dplyr case_when
 define_class <- function(ref, alt){
   case_when(
     nchar(alt)==nchar(ref) ~ "snv",
@@ -1727,8 +1709,8 @@ define_class <- function(ref, alt){
     return()
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>%
+#' @importFrom dplyr as_tibble filter select mutate mutate_all
 combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
                                              som_covered, germ_covered,
                                              templateGenes){
@@ -1758,8 +1740,6 @@ combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
   return(combined_uncovered)
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
 check_opt_assgap <- function(assumeSomCnaGaps, ploidy){
   if(assumeSomCnaGaps==TRUE&is.null(ploidy)){
     warning("somatic CNA gaps can only be assumed if input ploidy is",
@@ -1770,8 +1750,6 @@ check_opt_assgap <- function(assumeSomCnaGaps, ploidy){
   }
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
 check_opt_incdel <- function(includeIncompleteDel, ploidy){
   if(includeIncompleteDel==TRUE&is.null(ploidy)){
     warning("Large scale deletions cannot be included without ploidy",
@@ -1783,8 +1761,9 @@ check_opt_incdel <- function(includeIncompleteDel, ploidy){
   }
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>%
+#' @importFrom dplyr as_tibble group_by mutate ungroup filter
+#' @importFrom purrr compact
 combine_main_variant_tables <- function(df_germ, df_som, df_homdels,
                                         templateGenes, purity){
   gene <- . <- NULL
@@ -1810,8 +1789,8 @@ combine_main_variant_tables <- function(df_germ, df_som, df_homdels,
   return(df_all_mutations)
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>%
+#' @importFrom dplyr bind_rows group_by mutate relocate select ungroup relocate
 bind_incdel_to_pre_eval <- function(df_incompletedels, df_all_mutations){
   purity <- gene <- mut_id <- NULL
   if(is.null(df_all_mutations)){
@@ -1820,7 +1799,7 @@ bind_incdel_to_pre_eval <- function(df_incompletedels, df_all_mutations){
     if(is.null(df_incompletedels)){
       full_df_all_mutations <- df_all_mutations %>%
         select(-purity) %>%
-        dplyr::relocate(gene, mut_id, 2:13)
+        relocate(gene, mut_id, 2:13)
     } else {
       full_df_all_mutations <- bind_rows(
         df_all_mutations,
@@ -1829,15 +1808,15 @@ bind_incdel_to_pre_eval <- function(df_incompletedels, df_all_mutations){
         mutate(mut_id=paste0("m", seq_len(length(gene))))%>% 
         ungroup()%>%
         select(-purity) %>%
-        dplyr::relocate(gene, mut_id, 2:13)       
+        relocate(gene, mut_id, 2:13)       
     }    
   }
 
   return(full_df_all_mutations)
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import stringr
+#' @importFrom stringr %>%
+#' @importFrom dplyr filter bind_rows mutate select
 bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
   gene <- 0
   if(is.null(final_output)){
@@ -2135,12 +2114,9 @@ reconstruct_path <- function(goal) {
   path
 }
 #' @keywords internal
-#' @rawNamespace import(dplyr, except = c(first,last))
-#' @import datastructures
-#' @import methods
+#' @importFrom datastructures binomial_heap insert peek pop
 a_star_pathfinder <- function(nodes, start, goal,
                               hash_func = identity, search_node_env = NULL) {
-  #if (identical(start, goal))
   if(start==goal)
     return(list(start))
   search_nodes <- if (!is.null(search_node_env)) search_node_env else list()
@@ -2148,10 +2124,10 @@ a_star_pathfinder <- function(nodes, start, goal,
                                  fscore = 1)
   start_hash <- hash_func(start)
   search_nodes[[start_hash]] <- start_node
-  open_set <- datastructures::binomial_heap("numeric")
-  datastructures::insert(open_set, start_node$fscore, start_hash)
-  while (!is.null(datastructures::peek(open_set))) {
-    crnt <- search_nodes[[datastructures::pop(open_set)[[1]]]]
+  open_set <- binomial_heap("numeric")
+  insert(open_set, start_node$fscore, start_hash)
+  while (!is.null(peek(open_set))) {
+    crnt <- search_nodes[[pop(open_set)[[1]]]]
     #if (identical(crnt$data, goal))
     if(crnt$data==goal)
       return(reconstruct_path(crnt))
@@ -2173,7 +2149,7 @@ a_star_pathfinder <- function(nodes, start, goal,
         tentative_gscore + 1
       if (neigh_node$out_openset) {
         neigh_node$out_openset <- FALSE
-        datastructures::insert(open_set, neigh_node$fscore, indx)
+        insert(open_set, neigh_node$fscore, indx)
       }
     }
   }
