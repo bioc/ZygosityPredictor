@@ -17,6 +17,19 @@ Authors@R: c(
   person("Barbara", "Hutter", 
     role = c("aut"))
     )
+Imports: 
+    GenomicAlignments, 
+    GenomicRanges, 
+    Rsamtools, 
+    IRanges, 
+    VariantAnnotation, 
+    DelayedArray, 
+    dplyr, 
+    stringr, 
+    purrr, 
+    tibble,
+    methods,
+    datastructures 
 Depends: 
     GenomicAlignments, 
     GenomicRanges, 
