@@ -17,7 +17,7 @@ Authors@R: c(
   person("Barbara", "Hutter", 
     role = c("aut"))
     )
-Imports: 
+Depends: 
     GenomicAlignments, 
     GenomicRanges, 
     Rsamtools, 
