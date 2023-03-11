@@ -1129,7 +1129,8 @@ check_for_snps_between_main_muts <- function(main_comb, vcf, df_gene){
     select(1,2,3, ref=REF, alt=ALT, class) %>%
     unique() %>%
     select(-end) %>%
-    dplyr::rename(pos=start, chr=seqnames) %>%
+    rename(pos=start, chr=seqnames) %>%
+    #dplyr::rename(pos=start, chr=seqnames) %>%
     left_join(df_gene %>% select(chr, pos, mut_id),
               by=c("chr"="chr",
                    "pos"="pos")) %>%
