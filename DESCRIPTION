@@ -1,7 +1,7 @@
 Package: ZygosityPredictor
 Type: Package
 Title: Package for prediction of zygosity for variants/genes in NGS data
-Version: 0.99.3
+Version: 0.99.4
 Date: 2022-10-26
 Authors@R: c(
   person("Marco", "Rheinnecker", 
@@ -39,7 +39,7 @@ RoxygenNote: 7.2.3
 Encoding: UTF-8
 biocViews: BiomedicalInformatics, FunctionalPrediction, SomaticMutation, GenePrediction
 Depends: 
-    R (>= 4.3.0)
+    R (>= 4.2.0)
 LazyData: false
 Suggests: 
     knitr,
