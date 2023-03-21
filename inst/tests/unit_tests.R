@@ -1,6 +1,6 @@
 library(testthat)
 library(ZygosityPredictor)
-
+library(GenomicRanges)
 ## prepare inputs for predict_zygosity() unit test
 
 FILE_BAM <- "inst/extdata/ZP_example.bam"#
