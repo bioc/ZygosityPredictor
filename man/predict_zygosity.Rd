@@ -2,7 +2,7 @@
 % Please edit documentation in R/fncts.R
 \name{predict_zygosity}
 \alias{predict_zygosity}
-\title{predicts zygosity of a set of genes of a sample#'}
+\title{predicts zygosity of a set of genes of a sample}
 \usage{
 predict_zygosity(
   purity,
@@ -122,15 +122,11 @@ the evaluation per gene and, if performed, the info about the
 haplotype-phasing.
 }
 \description{
-predicts zygosity of a set of genes of a sample#'
+predicts zygosity of a set of genes of a sample
 }
 \examples{
-library(dplyr)
-library(purrr)
-library(stringr)
-library(GenomicRanges)
-cnvs  = GRanges(
-  tibble(
+cnvs  = GenomicRanges::GRanges(
+  dplyr::tibble(
     chr = "chr17",
     start = c(170060, 34520990),
     end = c(34520990, 83198614),
@@ -138,8 +134,8 @@ cnvs  = GRanges(
     cna_type = c("neutral", "LOH")
   )
 )
-somatic_vars = GRanges(
-  tibble(
+somatic_vars = GenomicRanges::GRanges(
+  dplyr::tibble(
     chr="chr17",
     start = 7675088,
     end = 7675088,
@@ -149,8 +145,8 @@ somatic_vars = GRanges(
     gene = "TP53" 
   )
 )
-germline_vars = GRanges(
-  tibble(
+germline_vars = GenomicRanges::GRanges(
+  dplyr::tibble(
     chr="chr17",
     start = 41771694,
     end = 41771694,
@@ -160,8 +156,8 @@ germline_vars = GRanges(
     gene = "JUP" 
   )
 )
-reference = GRanges(
-  tibble(
+reference = GenomicRanges::GRanges(
+  dplyr::tibble(
     chr = "chr17",
     start = c(7661778, 41754603),
     end = c(7687538, 41786931),

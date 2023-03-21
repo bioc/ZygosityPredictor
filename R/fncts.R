@@ -1838,7 +1838,7 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
   }
   return(full_output)
 }
-#' predicts zygosity of a set of genes of a sample#'
+#' predicts zygosity of a set of genes of a sample
 #' @param purity purity of the sample (numeric value between 0 and 1 indicating 
 #' the fraction of relevant sample with control/unrelevant tissue)
 #' @param ploidy ploidy of the sample (numeric value)
@@ -1913,12 +1913,8 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
 #' the evaluation per gene and, if performed, the info about the 
 #' haplotype-phasing.
 #' @examples
-#' library(dplyr)
-#' library(purrr)
-#' library(stringr)
-#' library(GenomicRanges)
-#' cnvs  = GRanges(
-#'   tibble(
+#' cnvs  = GenomicRanges::GRanges(
+#'   dplyr::tibble(
 #'     chr = "chr17",
 #'     start = c(170060, 34520990),
 #'     end = c(34520990, 83198614),
@@ -1926,8 +1922,8 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
 #'     cna_type = c("neutral", "LOH")
 #'   )
 #' )
-#' somatic_vars = GRanges(
-#'   tibble(
+#' somatic_vars = GenomicRanges::GRanges(
+#'   dplyr::tibble(
 #'     chr="chr17",
 #'     start = 7675088,
 #'     end = 7675088,
@@ -1937,8 +1933,8 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
 #'     gene = "TP53" 
 #'   )
 #' )
-#' germline_vars = GRanges(
-#'   tibble(
+#' germline_vars = GenomicRanges::GRanges(
+#'   dplyr::tibble(
 #'     chr="chr17",
 #'     start = 41771694,
 #'     end = 41771694,
@@ -1948,8 +1944,8 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
 #'     gene = "JUP" 
 #'   )
 #' )
-#' reference = GRanges(
-#'   tibble(
+#' reference = GenomicRanges::GRanges(
+#'   dplyr::tibble(
 #'     chr = "chr17",
 #'     start = c(7661778, 41754603),
 #'     end = c(7687538, 41786931),
@@ -1970,7 +1966,8 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
 #' @importFrom stringr %>%
 #' @importFrom IRanges subsetByOverlaps
 #' @importFrom purrr compact
-#' @importFrom dplyr bind_rows nth select
+#' @importFrom dplyr bind_rows nth select tibble
+#' @importFrom GenomicRanges GRanges
 #' @export
 predict_zygosity <- function(purity, 
                              sex,
