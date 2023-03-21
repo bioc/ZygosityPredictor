@@ -1963,11 +1963,11 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
 #'   geneModel = reference,
 #'   bamDna = bamfile
 #' )
+#' @import GenomicRanges
 #' @importFrom stringr %>%
 #' @importFrom IRanges subsetByOverlaps
 #' @importFrom purrr compact
 #' @importFrom dplyr bind_rows nth select tibble
-#' @importFrom GenomicRanges GRanges
 #' @export
 predict_zygosity <- function(purity, 
                              sex,
