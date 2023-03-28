@@ -165,11 +165,6 @@ pre_scoring <- function(tcn1, tcn2, status, aff_copies1, aff_copies2){
 classify_combination <- function(classified_reads, purity, eval_full, printLog,
                                  tcn1, tcn2, aff_copies1, 
                                  aff_copies2){
-  # tcn1 <- main_comb[['tcn1']]
-  # tcn1 <- main_comb[['tcn2']]
-  # aff_copies1<- main_comb[['aff_cp1']]
-  # aff_copies2 <-  main_comb[['aff_cp2']]
-  # classified_reads <- main_classified_reads
   result <- . <- fac <- NULL
   if(nrow(classified_reads)==0){
     return(rep(0, 7) %>% t() %>% as.data.frame() %>% 
@@ -568,7 +563,6 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
         aff_cp = aff_som_copies(chr, af, tcn, purity, sex),
         wt_cp = tcn-aff_cp,
         pre_info = 
-          #ifelse(base::isTRUE(str_detect(cna_type,'LOH')), 
           ifelse(isTRUE(str_detect(cna_type,'LOH')),
             ifelse(wt_cp<=0.5,
               paste(
@@ -1114,7 +1108,6 @@ check_for_snps_between_main_muts <- function(main_comb, vcf, df_gene){
     vcf_region <- 
       readVcf(tab_vcf, "hg19", 
                                  param=gr_roi) %>%
-      #DelayedArray::rowRanges() %>%
       rowRanges() %>%
       return()
   }) %>%
@@ -1130,7 +1123,6 @@ check_for_snps_between_main_muts <- function(main_comb, vcf, df_gene){
     unique() %>%
     select(-end) %>%
     rename(pos=start, chr=seqnames) %>%
-    #dplyr::rename(pos=start, chr=seqnames) %>%
     left_join(df_gene %>% select(chr, pos, mut_id),
               by=c("chr"="chr",
                    "pos"="pos")) %>%
@@ -1221,7 +1213,6 @@ phase_along_path <- function(path, sub_checked_read_presence, bam_raw,
                                   sub_comb[["class2"]]) %>%
       compact() %>%
       bind_rows()
-    #print(sub_classified_reads)
     sub_status_combination <- 
       classify_combination(sub_classified_reads,
                            purity,
@@ -1330,7 +1321,6 @@ phase <- function(df_gene, bamDna, bamRna,
     qname <- mut_id <- nreads <- status <- NULL
   # now a dataframe with all necesarry combination of input mutations is created
   all_combinations <- make_phasing_combinations(df_gene) 
-  #main_comb <- all_combinations[1,]
   final_combinations <-  apply(all_combinations, 1, function(main_comb){
     catt(printLog, 2 ,c("combination:", main_comb[["comb_id"]]))
     return_null_result <- TRUE
@@ -2125,7 +2115,6 @@ a_star_pathfinder <- function(nodes, start, goal,
   insert(open_set, start_node$fscore, start_hash)
   while (!is.null(peek(open_set))) {
     crnt <- search_nodes[[pop(open_set)[[1]]]]
-    #if (identical(crnt$data, goal))
     if(crnt$data==goal)
       return(reconstruct_path(crnt))
     crnt$out_openset <- TRUE
