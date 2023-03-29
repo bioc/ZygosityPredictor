@@ -9,7 +9,7 @@
 GRanges object
 }
 \usage{
-GR_GENE_MODEL
+data(GR_GENE_MODEL)
 }
 \description{
 germline small variant object

@@ -9,7 +9,7 @@
 GRanges object
 }
 \usage{
-GR_SCNA
+data(GR_SCNA)
 }
 \description{
 copynumber object

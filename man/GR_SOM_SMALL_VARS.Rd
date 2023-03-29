@@ -9,7 +9,7 @@
 GRanges object
 }
 \usage{
-GR_SOM_SMALL_VARS
+data(GR_GERM_SMALL_VARS)
 }
 \description{
 somatic small variant object
