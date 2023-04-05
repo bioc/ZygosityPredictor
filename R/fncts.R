@@ -903,12 +903,16 @@ check_gr_small_vars <- function(obj, origin){
   lab <- ifelse(origin=="somatic",
                  "somSmallVars",
                  "germSmallVars")
-  if(!is.null(obj)){
-    return(general_gr_checks(obj, "small_vars", lab))
-  } else {
+  if(is.null(obj)){
     warning("Input ", lab, " empty/does not contain variants. ",
-                  "Assuming there are no ", origin, " small variants")
+            "Assuming there are no ", origin, " small variants")
     return(NULL)
+  } else if(length(obj)==0){
+    warning("Input ", lab, " empty/does not contain variants. ",
+            "Assuming there are no ", origin, " small variants")
+    return(NULL)
+  } else {
+    return(general_gr_checks(obj, "small_vars", lab))
   }
 }
 #' @keywords internal
