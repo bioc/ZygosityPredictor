@@ -1788,7 +1788,7 @@ combine_main_variant_tables <- function(df_germ, df_som, df_homdels,
 #' @importFrom dplyr bind_rows group_by mutate relocate select ungroup relocate
 bind_incdel_to_pre_eval <- function(df_incompletedels, df_all_mutations){
   purity <- gene <- mut_id <- NULL
-  if(is.null(df_all_mutations)){
+  if(is.null(df_all_mutations)&is.null(df_incompletedels)){
     full_df_all_mutations <- NULL
   } else {
     if(is.null(df_incompletedels)){
@@ -1798,7 +1798,9 @@ bind_incdel_to_pre_eval <- function(df_incompletedels, df_all_mutations){
     } else {
       full_df_all_mutations <- bind_rows(
         df_all_mutations,
-        df_incompletedels %>% mutate(mut_id=NA)
+        df_incompletedels %>% 
+          unique() %>% 
+          mutate(mut_id=NA)
       ) %>% group_by(gene) %>% 
         mutate(mut_id=paste0("m", seq_len(length(gene))))%>% 
         ungroup()%>%
@@ -1814,7 +1816,7 @@ bind_incdel_to_pre_eval <- function(df_incompletedels, df_all_mutations){
 #' @importFrom dplyr filter bind_rows mutate select
 bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
   gene <- 0
-  if(is.null(final_output)){
+  if(is.null(final_output)&is.null(df_incompletedels)){
     full_output <- NULL
   } else {
     if(is.null(df_incompletedels)){
@@ -1825,6 +1827,7 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
         df_incompletedels %>%
           filter(!gene %in% final_output$gene) %>%
           select(gene) %>%
+          unique() %>%
           mutate(status="wt_copies_left",
                  info="somatic-incompletedel")
       )       
