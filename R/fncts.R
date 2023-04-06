@@ -518,7 +518,7 @@ aff_som_copies <- function(chr, af, tcn, purity, sex, c_normal=NULL){
 formula_checks <- function(chr, af, tcn, purity, sex, c_normal, af_normal=0.5){
   purity <- check_purity(purity)
   af <- check_af(af)
-  af_normal=check_af(af_normal)
+  af_normal <- check_af(af_normal)
   tcn <- check_tcn(tcn)
   if(is.null(c_normal)){
     sex <- check_sex(sex)
@@ -773,7 +773,7 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
           is.na(elementMetadata(somCna)[,"cna_type"]))] <- NA
     } 
     if(sex=="male"&str_detect(
-      paste(as.character(seqnames(GR_CNV)), collapse=" "), "X|Y")){
+      paste(as.character(seqnames(somCna)), collapse=" "), "X|Y")){
       ## if true, the sample is male and has Gonosomal regions
       somCna[which(
         as.character(seqnames(somCna)) %in% c("X", "Y"))]$cna_type <-
