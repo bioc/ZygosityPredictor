@@ -762,11 +762,19 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
     if(sum(is.na(elementMetadata(somCna)[,"cna_type"]))>0){
       warning("cna_type column of input somCna contains", 
               sum(is.na(elementMetadata(somCna)[,"cna_type"])),
-                    "NA values;\n  they will be taken as hetero-zygous\n")
+              "NA values;\n  they will be taken as hetero-zygous",
+              "/hemizygous for gonosomes in male samples\n")
       elementMetadata(somCna)[,"cna_type"][
         which(
           is.na(elementMetadata(somCna)[,"cna_type"]))] <- NA
     } 
+    if(sex=="male"&str_detect(
+      paste(as.character(seqnames(GR_CNV)), collapse=" "), "X|Y")){
+      ## if true, the sample is male and has Gonosomal regions
+      somCna[which(seqnames(somCna) %in% c("X", "Y"))]$cna_type <-
+        paste0(somCna[which(seqnames(somCna) %in% c("X", "Y"))]$cna_type,
+              ";LOH")
+    }
     if(assumeSomCnaGaps==TRUE){
       if(sum(is.na(elementMetadata(somCna)[,"tcn"]))>0){
         warning("tcn column of input somCna contains", 
