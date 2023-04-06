@@ -476,9 +476,9 @@ check_chr <- function(chr){
 #' library(stringr)
 #' aff_germ_copies(af=0.67, tcn=2, purity=0.9, chr="chrX", sex="female")
 aff_germ_copies <- function(chr, af, tcn, purity, sex, 
-                            c_normal=NULL){
-  cv <- formula_checks(chr, af, tcn, purity, sex, c_normal)
-  aff_cp <- cv$af*(cv$tcn+cv$c_normal*(1/cv$purity - 1)) - 1/cv$purity + 1
+                            c_normal=NULL, af_normal=0.5){
+  cv <- formula_checks(chr, af, tcn, purity, sex, c_normal, af_normal)
+  aff_cp <- cv$af*tcn+(cv$af-cv$af_normal)*cv$c_normal*((1/cv$purity)-1)
   return(aff_cp) 
   # alternative: (af*(purity*tcn+c_normal*(1-purity))-cc*(1-purity))/purity 
 }
@@ -511,9 +511,10 @@ aff_som_copies <- function(chr, af, tcn, purity, sex, c_normal=NULL){
 }
 #' @keywords internal
 #' description follows
-formula_checks <- function(chr, af, tcn, purity, sex, c_normal){
+formula_checks <- function(chr, af, tcn, purity, sex, c_normal, af_normal=0.5){
   purity <- check_purity(purity)
   af <- check_af(af)
+  af_normal=check_af(af_normal)
   tcn <- check_tcn(tcn)
   if(is.null(c_normal)){
     sex <- check_sex(sex)
@@ -526,7 +527,8 @@ formula_checks <- function(chr, af, tcn, purity, sex, c_normal){
   } else {
     c_normal <- check_ploidy(c_normal)
   }
-  return(list(af=af, tcn=tcn, purity=purity, c_normal=c_normal))
+  return(list(af=af, tcn=tcn, purity=purity, c_normal=c_normal, 
+              af_normal=af_normal))
 }
 #' @keywords internal
 #' @importFrom IRanges mergeByOverlaps
@@ -730,7 +732,7 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
                          assumeSomCnaGaps, colnameTcn, 
                          colnameCnaType){
   . <- NULL
-  ## check if class i GRanges
+  ## check if class is GRanges
   if(!is(somCna, "GRanges")){
     stop(
       "input somCna must be a GRanges object; given input appears to be: ", 
