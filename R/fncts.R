@@ -725,8 +725,8 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
 }
 #' @keywords internal
 #' description follows
-#' @importFrom stringr %>%
-#' @importFrom GenomicRanges elementMetadata elementMetadata<-
+#' @importFrom stringr %>% str_detect
+#' @importFrom GenomicRanges elementMetadata elementMetadata<- seqnames
 #' @importFrom methods is
 check_somCna <- function(somCna, geneModel, sex, ploidy,
                          assumeSomCnaGaps, colnameTcn, 
@@ -771,8 +771,11 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
     if(sex=="male"&str_detect(
       paste(as.character(seqnames(GR_CNV)), collapse=" "), "X|Y")){
       ## if true, the sample is male and has Gonosomal regions
-      somCna[which(seqnames(somCna) %in% c("X", "Y"))]$cna_type <-
-        paste0(somCna[which(seqnames(somCna) %in% c("X", "Y"))]$cna_type,
+      somCna[which(
+        as.character(seqnames(somCna)) %in% c("X", "Y"))]$cna_type <-
+        paste0(
+          somCna[which(
+            as.character(seqnames(somCna)) %in% c("X", "Y"))]$cna_type,
               ";LOH")
     }
     if(assumeSomCnaGaps==TRUE){
