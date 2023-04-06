@@ -468,6 +468,10 @@ check_chr <- function(chr){
 #' chromosomes in female samples. (The function can also assess the c_normal 
 #' parameter by itself, but then the following two inputs must be provided: 
 #' chr and sex)
+#' @param af_normal Allele-frequency in normal tissue (numeric value between 0 
+#' and 1) 0.5 represents heterozygous variants in diploid genome, 
+#' 1 would be homozygous. Could be relevant if germline CNVs are present at the 
+#' position. Then also the c_normal parameter would have to be adjusted.
 #' @return A numeric value indicating the affecting copies for the variant
 #' @export
 #' @examples 
@@ -478,7 +482,7 @@ check_chr <- function(chr){
 aff_germ_copies <- function(chr, af, tcn, purity, sex, 
                             c_normal=NULL, af_normal=0.5){
   cv <- formula_checks(chr, af, tcn, purity, sex, c_normal, af_normal)
-  aff_cp <- cv$af*tcn+(cv$af-cv$af_normal)*cv$c_normal*((1/cv$purity)-1)
+  aff_cp <- cv$af*cv$tcn+(cv$af-cv$af_normal)*cv$c_normal*((1/cv$purity)-1)
   return(aff_cp) 
   # alternative: (af*(purity*tcn+c_normal*(1-purity))-cc*(1-purity))/purity 
 }

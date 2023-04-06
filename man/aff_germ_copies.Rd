@@ -4,7 +4,7 @@
 \alias{aff_germ_copies}
 \title{calculates how many copies are affected by a germnline small variant}
 \usage{
-aff_germ_copies(chr, af, tcn, purity, sex, c_normal = NULL)
+aff_germ_copies(chr, af, tcn, purity, sex, c_normal = NULL, af_normal = 0.5)
 }
 \arguments{
 \item{chr}{chromosome of the variant (either format 1,2,..,X,Y or 
