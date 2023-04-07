@@ -94,6 +94,11 @@ chr and sex)
 number or in the “chr1” format; chromosome of the variant
 * **sex**: (only if c_normal is not provided) character; either “male” or 
 “female” / “m” or “f”; sex of the sample
+* **af_normal**: (default 0.5) numeric; allele-frequency of germline variant in 
+normal tissue. 0.5 represents heterozygous variants in diploid genome, 1 would
+be homozygous. Could be relevant if germline CNVs are present at the position.
+Then also the c_normal parameter would have to be adjusted.
+
 
 the output is a numeric value that indicates the affected copies.
 
