@@ -24,6 +24,11 @@ tissue, 1 for gonosomes in male samples, and 2 for male autosomes and all
 chromosomes in female samples. (The function can also assess the c_normal 
 parameter by itself, but then the following two inputs must be provided: 
 chr and sex)}
+
+\item{af_normal}{Allele-frequency in normal tissue (numeric value between 0 
+and 1) 0.5 represents heterozygous variants in diploid genome, 
+1 would be homozygous. Could be relevant if germline CNVs are present at the 
+position. Then also the c_normal parameter would have to be adjusted.}
 }
 \value{
 A numeric value indicating the affecting copies for the variant
