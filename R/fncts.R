@@ -825,25 +825,29 @@ nm_md <- function(obj){
 #' description follows
 check_name_presence <- function(obj, type){
   if(
-      (   
-        ("gene" %in% nm_md(obj)|
-         "GENE" %in% nm_md(obj)
-        )&
-        (type=="gene_model"|
-          (
-            ("af" %in% nm_md(obj)|
-             "AF" %in% nm_md(obj)
-            )&
-            ("ref" %in% nm_md(obj)|
-             "REF" %in% nm_md(obj)
-            )&
-            ("alt" %in% nm_md(obj)|
-             "ALT" %in% nm_md(obj)
-            )
-          )
-        )
+    (   
+      ("gene" %in% nm_md(obj)|
+       "GENE" %in% nm_md(obj)|
+       "Gene" %in% nm_md(obj)
+      )&
+      (type=="gene_model"|
+       (
+         ("af" %in% nm_md(obj)|
+          "AF" %in% nm_md(obj)|
+          "Af" %in% nm_md(obj)
+         )&
+         ("ref" %in% nm_md(obj)|
+          "REF" %in% nm_md(obj)|
+          "Ref" %in% nm_md(obj)
+         )&
+         ("alt" %in% nm_md(obj)|
+          "ALT" %in% nm_md(obj)|
+          "Alt" %in% nm_md(obj)
+         )
+       )
       )
-    ){
+    )
+  ){
     return(TRUE)
   } else {
     return(FALSE)
