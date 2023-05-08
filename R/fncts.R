@@ -69,7 +69,13 @@ allowed_inputs <- function(which_one){
     chrom_names = c(
       c(seq_len(23), "X", "Y"),
       paste0("chr", c(seq_len(23), "X", "Y"))
-    )
+    ),
+    colnames_gene = c("GENE", "gene", "Gene", 
+                      "Gene_name", "GENE_NAME", "gene_name"),
+    colnames_af = c("AF", "af", "Af"),
+    colnames_ref = c("REF", "ref", "Ref"),
+    colnames_alt = c("ALT", "alt","Alt"),
+    colnames_tcn = c("TCN", "tcn", "Tcn")
   )
   return(type_list[[which_one]])
 }
@@ -825,25 +831,29 @@ nm_md <- function(obj){
 #' description follows
 check_name_presence <- function(obj, type){
   if(
-    (   
-      ("gene" %in% nm_md(obj)|
-       "GENE" %in% nm_md(obj)|
-       "Gene" %in% nm_md(obj)
-      )&
+    (  
+      any(allowed_inputs("colnames_gene") %in% nm_md(obj))&
+      # ("gene" %in% nm_md(obj)|
+      #  "GENE" %in% nm_md(obj)|
+      #  "Gene" %in% nm_md(obj)
+      # )&
       (type=="gene_model"|
        (
-         ("af" %in% nm_md(obj)|
-          "AF" %in% nm_md(obj)|
-          "Af" %in% nm_md(obj)
-         )&
-         ("ref" %in% nm_md(obj)|
-          "REF" %in% nm_md(obj)|
-          "Ref" %in% nm_md(obj)
-         )&
-         ("alt" %in% nm_md(obj)|
-          "ALT" %in% nm_md(obj)|
-          "Alt" %in% nm_md(obj)
-         )
+         any(allowed_inputs("colnames_af") %in% nm_md(obj))&
+         # ("af" %in% nm_md(obj)|
+         #  "AF" %in% nm_md(obj)|
+         #  "Af" %in% nm_md(obj)
+         # )&
+         any(allowed_inputs("colnames_ref") %in% nm_md(obj))&
+         # ("ref" %in% nm_md(obj)|
+         #  "REF" %in% nm_md(obj)|
+         #  "Ref" %in% nm_md(obj)
+         # )&
+         any(allowed_inputs("colnames_alt") %in% nm_md(obj))
+         # ("alt" %in% nm_md(obj)|
+         #  "ALT" %in% nm_md(obj)|
+         #  "Alt" %in% nm_md(obj)
+         # )
        )
       )
     )
@@ -861,19 +871,19 @@ assign_correct_colnames <- function(obj, type){
   . <- NULL
   col_gene <- str_match(
     nm_md(obj), 
-    "gene|GENE") %>%
+    paste(allowed_inputs("colnames_gene"), collapse="|")) %>%
     .[which(!is.na(.))]
   elementMetadata(obj)[,"gene"] <- 
     elementMetadata(obj)[,col_gene]  
   if(type=="small_vars"){
     col_af <- str_match(
-      nm_md(obj), "af|AF") %>%
+      nm_md(obj), paste(allowed_inputs("colnames_af"), collapse="|")) %>%
       .[which(!is.na(.))]
     col_ref <- str_match(
-      nm_md(obj), "ref|REF") %>%
+      nm_md(obj), paste(allowed_inputs("colnames_ref"), collapse="|")) %>%
       .[which(!is.na(.))]
     col_alt <- str_match(
-      nm_md(obj), "alt|ALT") %>%
+      nm_md(obj), paste(allowed_inputs("colnames_alt"), collapse="|")) %>%
       .[which(!is.na(.))]
     elementMetadata(obj)[,"af"] <- 
       elementMetadata(obj)[,col_af]
