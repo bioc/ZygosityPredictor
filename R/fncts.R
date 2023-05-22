@@ -75,7 +75,8 @@ allowed_inputs <- function(which_one){
     colnames_af = c("AF", "af", "Af"),
     colnames_ref = c("REF", "ref", "Ref"),
     colnames_alt = c("ALT", "alt","Alt"),
-    colnames_tcn = c("TCN", "tcn", "Tcn")
+    colnames_tcn = c("TCN", "tcn", "Tcn"),
+    colnames_cna_type = c("cna_type", "CNA_type", "Cna_Type", "CNA_Type")
   )
   return(type_list[[which_one]])
 }
@@ -743,31 +744,37 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
                          colnameCnaType){
   . <- NULL
   ## check if class is GRanges
-  if(!is(somCna, "GRanges")){
-    stop(
-      "input somCna must be a GRanges object; given input appears to be: ", 
-      class(somCna))
-  } else if(
-    !(
-      ("tcn" %in% names(elementMetadata(somCna))|
-       !is.null(colnameTcn))&
-      ("cna_type" %in% names(elementMetadata(somCna))|
-       !is.null(colnameCnaType))
-    )
-    ){
-    stop("input somCna requires the following metadata columns: \'tcn\'",
-             "and \'cna_type\'",
-             "please rename relevant metadata or provide metadata colname by",
-             "colnameTcn or colnameCnaType")
-  } else {
-    if(!is.null(colnameTcn)){
-      elementMetadata(somCna)[,"tcn"] <- 
-        elementMetadata(somCna)[,colnameTcn]
-    }
-    if(!is.null(colnameTcn)){
-      elementMetadata(somCna)[,"cna_type"] <- 
-        elementMetadata(somCna)[,colnameCnaType]
-    }
+  # if(!is(somCna, "GRanges")){
+  #   stop(
+  #     "input somCna must be a GRanges object; given input appears to be: ", 
+  #     class(somCna))
+  # } else if(
+  #   !(
+  #     (
+  #       #"tcn" %in% names(elementMetadata(somCna))|
+  #      any(allowed_inputs("colnames_tcn") %in% nm_md(somCna))|
+  #      !is.null(colnameTcn)
+  #      )&
+  #     (
+  #      # "cna_type" %in% names(elementMetadata(somCna))|
+  #       any(allowed_inputs("colnames_cna_type") %in% nm_md(somCna))|
+  #      !is.null(colnameCnaType)
+  #      )
+  #   )
+  #   ){
+  #   stop("input somCna requires the following metadata columns: \'tcn\'",
+  #            "and \'cna_type\'",
+  #            "please rename relevant metadata or provide metadata colname by",
+  #            "colnameTcn or colnameCnaType")
+  #} else {
+  somCna <- general_gr_checks(somCna, "scna", "somCna")
+  
+    # if(!is.null(colnameTcn)){
+    #   somCna$tcn <- elementMetadata(somCna)[,colnameTcn]
+    # }
+    # if(!is.null(colnameTcn)){
+    #   somCna$cna_type <- elementMetadata(somCna)[,colnameCnaType]
+    # }
     somCna$tcn_assumed <- FALSE
     if(sum(is.na(elementMetadata(somCna)[,"cna_type"]))>0){
       warning("cna_type column of input somCna contains", 
@@ -819,7 +826,7 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
       
     }
     return(new_somCna)
-  }
+  #}
 }
 #' @keywords internal
 #' description follows
@@ -830,37 +837,33 @@ nm_md <- function(obj){
 #' @keywords internal
 #' description follows
 check_name_presence <- function(obj, type){
-  if(
-    (  
-      any(allowed_inputs("colnames_gene") %in% nm_md(obj))&
-      # ("gene" %in% nm_md(obj)|
-      #  "GENE" %in% nm_md(obj)|
-      #  "Gene" %in% nm_md(obj)
-      # )&
-      (type=="gene_model"|
-       (
-         any(allowed_inputs("colnames_af") %in% nm_md(obj))&
-         # ("af" %in% nm_md(obj)|
-         #  "AF" %in% nm_md(obj)|
-         #  "Af" %in% nm_md(obj)
-         # )&
-         any(allowed_inputs("colnames_ref") %in% nm_md(obj))&
-         # ("ref" %in% nm_md(obj)|
-         #  "REF" %in% nm_md(obj)|
-         #  "Ref" %in% nm_md(obj)
-         # )&
-         any(allowed_inputs("colnames_alt") %in% nm_md(obj))
-         # ("alt" %in% nm_md(obj)|
-         #  "ALT" %in% nm_md(obj)|
-         #  "Alt" %in% nm_md(obj)
-         # )
-       )
-      )
-    )
-  ){
-    return(TRUE)
+  if(type=="scna"){
+    if(
+      any(allowed_inputs("colnames_tcn") %in% nm_md(obj))&
+      (any(allowed_inputs("colnames_cna_type") %in% nm_md(obj))|
+       "LOH" %in% nm_md(obj))
+    ){ 
+      return(TRUE)
+    } else {
+      return(FALSE)
+    } 
   } else {
-    return(FALSE)
+    if(
+      (  
+        any(allowed_inputs("colnames_gene") %in% nm_md(obj))&
+        (type=="gene_model"|
+         (
+           any(allowed_inputs("colnames_af") %in% nm_md(obj))&
+           any(allowed_inputs("colnames_ref") %in% nm_md(obj))&
+           any(allowed_inputs("colnames_alt") %in% nm_md(obj))
+         )
+        )
+      )
+    ){
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }    
   }
 }
 #' @keywords internal
@@ -869,31 +872,50 @@ check_name_presence <- function(obj, type){
 #' @importFrom GenomicRanges elementMetadata elementMetadata<-
 assign_correct_colnames <- function(obj, type){
   . <- NULL
-  col_gene <- str_match(
-    nm_md(obj), 
-    paste(allowed_inputs("colnames_gene"), collapse="|")) %>%
-    .[which(!is.na(.))]
-  elementMetadata(obj)[,"gene"] <- 
-    elementMetadata(obj)[,col_gene]  
-  if(type=="small_vars"){
-    col_af <- str_match(
-      nm_md(obj), paste(allowed_inputs("colnames_af"), collapse="|")) %>%
+  if(type=="scna"){
+    col_tcn <- str_match(
+      nm_md(obj), paste(allowed_inputs("colnames_tcn"), collapse="|")) %>%
       .[which(!is.na(.))]
-    col_ref <- str_match(
-      nm_md(obj), paste(allowed_inputs("colnames_ref"), collapse="|")) %>%
+    elementMetadata(obj)[,"tcn"] <- 
+      elementMetadata(obj)[,col_tcn]   
+    if("LOH" %in% nm_md(obj)){
+      obj$cna_type <- case_when(obj$LOH==T ~ "LOH",
+                                    TRUE ~ "HZ")
+    } else {
+      col_cna_type <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_cna_type"), collapse="|")) %>%
+        .[which(!is.na(.))]   
+      elementMetadata(obj)[,"cna_type"] <- 
+        elementMetadata(obj)[,col_cna_type]
+    }
+  } else {
+    col_gene <- str_match(
+      nm_md(obj), 
+      paste(allowed_inputs("colnames_gene"), collapse="|")) %>%
       .[which(!is.na(.))]
-    col_alt <- str_match(
-      nm_md(obj), paste(allowed_inputs("colnames_alt"), collapse="|")) %>%
-      .[which(!is.na(.))]
-    elementMetadata(obj)[,"af"] <- 
-      elementMetadata(obj)[,col_af]
-    elementMetadata(obj)[,"ref"] <- 
-      elementMetadata(obj)[,col_ref]
-    elementMetadata(obj)[,"alt"] <- 
-      elementMetadata(obj)[,col_alt]
-    elementMetadata(obj)["mid"] <- 
-      seq_len(length(obj))    
+    elementMetadata(obj)[,"gene"] <- 
+      elementMetadata(obj)[,col_gene]  
+    if(type=="small_vars"){
+      col_af <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_af"), collapse="|")) %>%
+        .[which(!is.na(.))]
+      col_ref <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_ref"), collapse="|")) %>%
+        .[which(!is.na(.))]
+      col_alt <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_alt"), collapse="|")) %>%
+        .[which(!is.na(.))]
+      elementMetadata(obj)[,"af"] <- 
+        elementMetadata(obj)[,col_af]
+      elementMetadata(obj)[,"ref"] <- 
+        elementMetadata(obj)[,col_ref]
+      elementMetadata(obj)[,"alt"] <- 
+        elementMetadata(obj)[,col_alt]
+      elementMetadata(obj)["mid"] <- 
+        seq_len(length(obj))    
+    }    
   }
+
   return(obj)
 }
 
@@ -903,7 +925,11 @@ general_gr_checks <- function(obj, type, lab){
          "given input appears to be:", 
          class(obj))
   } else if(!check_name_presence(obj, type)){
-    if(type=="small_vars"){
+    if(type=="scna"){
+      stop(
+        "input somCna requires the following metadata columns: ",
+        "\'tcn\' and \'cna_type\'")
+    } else if(type=="small_vars"){
       stop("input ", lab, " requires the following metadata columns:",
            "\'gene\'/\'GENE\', \'ref\'/\'REF\',",
            " \'alt\'/\'ALT\' and \'af\'/\'AF\'")      
