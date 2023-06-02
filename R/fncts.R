@@ -75,7 +75,8 @@ allowed_inputs <- function(which_one){
     colnames_af = c("AF", "af", "Af"),
     colnames_ref = c("REF", "ref", "Ref"),
     colnames_alt = c("ALT", "alt","Alt"),
-    colnames_tcn = c("TCN", "tcn", "Tcn")
+    colnames_tcn = c("TCN", "tcn", "Tcn"),
+    colnames_cna_type = c("cna_type", "CNA_type", "Cna_Type", "CNA_Type")
   )
   return(type_list[[which_one]])
 }
@@ -743,31 +744,37 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
                          colnameCnaType){
   . <- NULL
   ## check if class is GRanges
-  if(!is(somCna, "GRanges")){
-    stop(
-      "input somCna must be a GRanges object; given input appears to be: ", 
-      class(somCna))
-  } else if(
-    !(
-      ("tcn" %in% names(elementMetadata(somCna))|
-       !is.null(colnameTcn))&
-      ("cna_type" %in% names(elementMetadata(somCna))|
-       !is.null(colnameCnaType))
-    )
-    ){
-    stop("input somCna requires the following metadata columns: \'tcn\'",
-             "and \'cna_type\'",
-             "please rename relevant metadata or provide metadata colname by",
-             "colnameTcn or colnameCnaType")
-  } else {
-    if(!is.null(colnameTcn)){
-      elementMetadata(somCna)[,"tcn"] <- 
-        elementMetadata(somCna)[,colnameTcn]
-    }
-    if(!is.null(colnameTcn)){
-      elementMetadata(somCna)[,"cna_type"] <- 
-        elementMetadata(somCna)[,colnameCnaType]
-    }
+  # if(!is(somCna, "GRanges")){
+  #   stop(
+  #     "input somCna must be a GRanges object; given input appears to be: ", 
+  #     class(somCna))
+  # } else if(
+  #   !(
+  #     (
+  #       #"tcn" %in% names(elementMetadata(somCna))|
+  #      any(allowed_inputs("colnames_tcn") %in% nm_md(somCna))|
+  #      !is.null(colnameTcn)
+  #      )&
+  #     (
+  #      # "cna_type" %in% names(elementMetadata(somCna))|
+  #       any(allowed_inputs("colnames_cna_type") %in% nm_md(somCna))|
+  #      !is.null(colnameCnaType)
+  #      )
+  #   )
+  #   ){
+  #   stop("input somCna requires the following metadata columns: \'tcn\'",
+  #            "and \'cna_type\'",
+  #            "please rename relevant metadata or provide metadata colname by",
+  #            "colnameTcn or colnameCnaType")
+  #} else {
+  somCna <- general_gr_checks(somCna, "scna", "somCna")
+  
+    # if(!is.null(colnameTcn)){
+    #   somCna$tcn <- elementMetadata(somCna)[,colnameTcn]
+    # }
+    # if(!is.null(colnameTcn)){
+    #   somCna$cna_type <- elementMetadata(somCna)[,colnameCnaType]
+    # }
     somCna$tcn_assumed <- FALSE
     if(sum(is.na(elementMetadata(somCna)[,"cna_type"]))>0){
       warning("cna_type column of input somCna contains", 
@@ -819,7 +826,7 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
       
     }
     return(new_somCna)
-  }
+  #}
 }
 #' @keywords internal
 #' description follows
@@ -830,37 +837,33 @@ nm_md <- function(obj){
 #' @keywords internal
 #' description follows
 check_name_presence <- function(obj, type){
-  if(
-    (  
-      any(allowed_inputs("colnames_gene") %in% nm_md(obj))&
-      # ("gene" %in% nm_md(obj)|
-      #  "GENE" %in% nm_md(obj)|
-      #  "Gene" %in% nm_md(obj)
-      # )&
-      (type=="gene_model"|
-       (
-         any(allowed_inputs("colnames_af") %in% nm_md(obj))&
-         # ("af" %in% nm_md(obj)|
-         #  "AF" %in% nm_md(obj)|
-         #  "Af" %in% nm_md(obj)
-         # )&
-         any(allowed_inputs("colnames_ref") %in% nm_md(obj))&
-         # ("ref" %in% nm_md(obj)|
-         #  "REF" %in% nm_md(obj)|
-         #  "Ref" %in% nm_md(obj)
-         # )&
-         any(allowed_inputs("colnames_alt") %in% nm_md(obj))
-         # ("alt" %in% nm_md(obj)|
-         #  "ALT" %in% nm_md(obj)|
-         #  "Alt" %in% nm_md(obj)
-         # )
-       )
-      )
-    )
-  ){
-    return(TRUE)
+  if(type=="scna"){
+    if(
+      any(allowed_inputs("colnames_tcn") %in% nm_md(obj))&
+      (any(allowed_inputs("colnames_cna_type") %in% nm_md(obj))|
+       "LOH" %in% nm_md(obj))
+    ){ 
+      return(TRUE)
+    } else {
+      return(FALSE)
+    } 
   } else {
-    return(FALSE)
+    if(
+      (  
+        any(allowed_inputs("colnames_gene") %in% nm_md(obj))&
+        (type=="gene_model"|
+         (
+           any(allowed_inputs("colnames_af") %in% nm_md(obj))&
+           any(allowed_inputs("colnames_ref") %in% nm_md(obj))&
+           any(allowed_inputs("colnames_alt") %in% nm_md(obj))
+         )
+        )
+      )
+    ){
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }    
   }
 }
 #' @keywords internal
@@ -869,31 +872,50 @@ check_name_presence <- function(obj, type){
 #' @importFrom GenomicRanges elementMetadata elementMetadata<-
 assign_correct_colnames <- function(obj, type){
   . <- NULL
-  col_gene <- str_match(
-    nm_md(obj), 
-    paste(allowed_inputs("colnames_gene"), collapse="|")) %>%
-    .[which(!is.na(.))]
-  elementMetadata(obj)[,"gene"] <- 
-    elementMetadata(obj)[,col_gene]  
-  if(type=="small_vars"){
-    col_af <- str_match(
-      nm_md(obj), paste(allowed_inputs("colnames_af"), collapse="|")) %>%
+  if(type=="scna"){
+    col_tcn <- str_match(
+      nm_md(obj), paste(allowed_inputs("colnames_tcn"), collapse="|")) %>%
       .[which(!is.na(.))]
-    col_ref <- str_match(
-      nm_md(obj), paste(allowed_inputs("colnames_ref"), collapse="|")) %>%
+    elementMetadata(obj)[,"tcn"] <- 
+      elementMetadata(obj)[,col_tcn]   
+    if("LOH" %in% nm_md(obj)){
+      obj$cna_type <- case_when(obj$LOH==T ~ "LOH",
+                                    TRUE ~ "HZ")
+    } else {
+      col_cna_type <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_cna_type"), collapse="|")) %>%
+        .[which(!is.na(.))]   
+      elementMetadata(obj)[,"cna_type"] <- 
+        elementMetadata(obj)[,col_cna_type]
+    }
+  } else {
+    col_gene <- str_match(
+      nm_md(obj), 
+      paste(allowed_inputs("colnames_gene"), collapse="|")) %>%
       .[which(!is.na(.))]
-    col_alt <- str_match(
-      nm_md(obj), paste(allowed_inputs("colnames_alt"), collapse="|")) %>%
-      .[which(!is.na(.))]
-    elementMetadata(obj)[,"af"] <- 
-      elementMetadata(obj)[,col_af]
-    elementMetadata(obj)[,"ref"] <- 
-      elementMetadata(obj)[,col_ref]
-    elementMetadata(obj)[,"alt"] <- 
-      elementMetadata(obj)[,col_alt]
-    elementMetadata(obj)["mid"] <- 
-      seq_len(length(obj))    
+    elementMetadata(obj)[,"gene"] <- 
+      elementMetadata(obj)[,col_gene]  
+    if(type=="small_vars"){
+      col_af <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_af"), collapse="|")) %>%
+        .[which(!is.na(.))]
+      col_ref <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_ref"), collapse="|")) %>%
+        .[which(!is.na(.))]
+      col_alt <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_alt"), collapse="|")) %>%
+        .[which(!is.na(.))]
+      elementMetadata(obj)[,"af"] <- 
+        elementMetadata(obj)[,col_af]
+      elementMetadata(obj)[,"ref"] <- 
+        elementMetadata(obj)[,col_ref]
+      elementMetadata(obj)[,"alt"] <- 
+        elementMetadata(obj)[,col_alt]
+      elementMetadata(obj)["mid"] <- 
+        seq_len(length(obj))    
+    }    
   }
+
   return(obj)
 }
 
@@ -903,7 +925,11 @@ general_gr_checks <- function(obj, type, lab){
          "given input appears to be:", 
          class(obj))
   } else if(!check_name_presence(obj, type)){
-    if(type=="small_vars"){
+    if(type=="scna"){
+      stop(
+        "input somCna requires the following metadata columns: ",
+        "\'tcn\' and \'cna_type\'")
+    } else if(type=="small_vars"){
       stop("input ", lab, " requires the following metadata columns:",
            "\'gene\'/\'GENE\', \'ref\'/\'REF\',",
            " \'alt\'/\'ALT\' and \'af\'/\'AF\'")      
@@ -1190,22 +1216,16 @@ check_read_presence <- function(sub_comb, bamDna, bamRna){
   return(rl)
 }
 #' @keywords internal
-find_path <- function(still_present_muts, sub_checked_read_presence,
-                      main_comb){
-  . <- mut_id1 <- mut_id2 <- NULL
-  a_star_nodes <- lapply(still_present_muts, function(MUT){
-    rel_rows <- sub_checked_read_presence %>%
-      filter(mut_id1==MUT|mut_id2==MUT)
-    all_partners <- c(rel_rows$mut_id1, rel_rows$mut_id2) %>%
-      .[which(!.==MUT)]
-    return(lapply(all_partners, function(x)return(1)) %>% 
-             unlist())
-  })
-  path <- a_star_pathfinder(
-    a_star_nodes,
-    main_comb[["mut_id1"]],
-    main_comb[["mut_id2"]])
-  return(path)
+#' @importFrom igraph graph_from_data_frame shortest_paths
+find_path <- function(connections, mut_id1, mut_id2) {
+  graph <- graph_from_data_frame(connections, directed = FALSE)
+  shortest_path <- 
+    shortest_paths(graph, from = mut_id1, to = mut_id2, mode = "all")$vpath
+  if (length(shortest_path) > 0) {
+    return(names(unlist(shortest_path)))
+  } else {
+    return(NULL)
+  }
 }
 #' @keywords internal
 #' @importFrom stringr %>% str_split
@@ -1435,8 +1455,16 @@ phase <- function(df_gene, bamDna, bamRna,
            main_comb[["mut_id2"]] %in% still_present_muts){
           
           ## make list to use with A* algorithm
-          path <- find_path(still_present_muts, sub_checked_read_presence,
-                            main_comb)
+          
+          #print(still_present_muts)
+          #print(sub_checked_read_presence)
+          #print(main_comb)
+          
+          # path <- find_path(still_present_muts, sub_checked_read_presence,
+          #                   main_comb)
+          path <- find_path(sub_checked_read_presence %>%
+                              select(mut_id1, mut_id2), main_comb[["mut_id1"]],
+                            main_comb[["mut_id2"]])
           if(!is.null(path)){
             catt(printLog, 5, c("path found:", 
                 paste(unlist(path), collapse=" - ")))
@@ -2115,66 +2143,3 @@ predict_zygosity <- function(purity,
     compact()
   return(result_list)
 } 
-## the following functions were taken from 
-## https://github.com/machow/astar-r
-#' @keywords internal
-make_search_node <- function(data, gscore, fscore) {
-  env <- new.env()
-  env$data <- data
-  env$gscore <- gscore
-  env$fscore <- fscore
-  env$closed <- FALSE
-  env$out_openset <- TRUE
-  env$came_from <- NULL
-  env
-}
-#' @keywords internal
-reconstruct_path <- function(goal) {
-  path <- list(goal$data)
-  crnt <- goal
-  while (!is.null(crnt$came_from)) {
-    crnt <- crnt$came_from
-    path <- c(list(crnt$data), path)
-  }
-  path
-}
-#' @keywords internal
-#' @importFrom datastructures binomial_heap insert peek pop
-a_star_pathfinder <- function(nodes, start, goal,
-                              hash_func = identity, search_node_env = NULL) {
-  if(start==goal)
-    return(list(start))
-  search_nodes <- if (!is.null(search_node_env)) search_node_env else list()
-  start_node <- make_search_node(start, gscore = 0,
-                                 fscore = 1)
-  start_hash <- hash_func(start)
-  search_nodes[[start_hash]] <- start_node
-  open_set <- binomial_heap("numeric")
-  insert(open_set, start_node$fscore, start_hash)
-  while (!is.null(peek(open_set))) {
-    crnt <- search_nodes[[pop(open_set)[[1]]]]
-    if(crnt$data==goal)
-      return(reconstruct_path(crnt))
-    crnt$out_openset <- TRUE
-    crnt$closed <- TRUE
-    for (neighbor in names(nodes[[crnt$data]])) {
-      indx <- hash_func(neighbor)
-      neigh_node <- search_nodes[[indx]]
-      if (is.null(neigh_node)) {
-        neigh_node <- search_nodes[[indx]] <-
-          make_search_node(neighbor, Inf, Inf)
-      }
-      if (neigh_node$closed) next
-      tentative_gscore <- crnt$gscore + nodes[[crnt$data]][neigh_node$data]
-      if (tentative_gscore >= neigh_node$gscore) next
-      neigh_node$came_from <- crnt
-      neigh_node$gscore <- tentative_gscore
-      neigh_node$fscore <-
-        tentative_gscore + 1
-      if (neigh_node$out_openset) {
-        neigh_node$out_openset <- FALSE
-        insert(open_set, neigh_node$fscore, indx)
-      }
-    }
-  }
-}
