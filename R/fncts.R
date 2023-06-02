@@ -1216,22 +1216,16 @@ check_read_presence <- function(sub_comb, bamDna, bamRna){
   return(rl)
 }
 #' @keywords internal
-find_path <- function(still_present_muts, sub_checked_read_presence,
-                      main_comb){
-  . <- mut_id1 <- mut_id2 <- NULL
-  a_star_nodes <- lapply(still_present_muts, function(MUT){
-    rel_rows <- sub_checked_read_presence %>%
-      filter(mut_id1==MUT|mut_id2==MUT)
-    all_partners <- c(rel_rows$mut_id1, rel_rows$mut_id2) %>%
-      .[which(!.==MUT)]
-    return(lapply(all_partners, function(x)return(1)) %>% 
-             unlist())
-  })
-  path <- a_star_pathfinder(
-    a_star_nodes,
-    main_comb[["mut_id1"]],
-    main_comb[["mut_id2"]])
-  return(path)
+#' @importFrom igraph graph_from_data_frame shortest_paths
+find_path <- function(connections, mut_id1, mut_id2) {
+  graph <- graph_from_data_frame(connections, directed = FALSE)
+  shortest_path <- 
+    shortest_paths(graph, from = mut_id1, to = mut_id2, mode = "all")$vpath
+  if (length(shortest_path) > 0) {
+    return(names(unlist(shortest_path)))
+  } else {
+    return(NULL)
+  }
 }
 #' @keywords internal
 #' @importFrom stringr %>% str_split
@@ -1461,8 +1455,16 @@ phase <- function(df_gene, bamDna, bamRna,
            main_comb[["mut_id2"]] %in% still_present_muts){
           
           ## make list to use with A* algorithm
-          path <- find_path(still_present_muts, sub_checked_read_presence,
-                            main_comb)
+          
+          #print(still_present_muts)
+          #print(sub_checked_read_presence)
+          #print(main_comb)
+          
+          # path <- find_path(still_present_muts, sub_checked_read_presence,
+          #                   main_comb)
+          path <- find_path(sub_checked_read_presence %>%
+                              select(mut_id1, mut_id2), main_comb[["mut_id1"]],
+                            main_comb[["mut_id2"]])
           if(!is.null(path)){
             catt(printLog, 5, c("path found:", 
                 paste(unlist(path), collapse=" - ")))
@@ -2141,66 +2143,3 @@ predict_zygosity <- function(purity,
     compact()
   return(result_list)
 } 
-## the following functions were taken from 
-## https://github.com/machow/astar-r
-#' @keywords internal
-make_search_node <- function(data, gscore, fscore) {
-  env <- new.env()
-  env$data <- data
-  env$gscore <- gscore
-  env$fscore <- fscore
-  env$closed <- FALSE
-  env$out_openset <- TRUE
-  env$came_from <- NULL
-  env
-}
-#' @keywords internal
-reconstruct_path <- function(goal) {
-  path <- list(goal$data)
-  crnt <- goal
-  while (!is.null(crnt$came_from)) {
-    crnt <- crnt$came_from
-    path <- c(list(crnt$data), path)
-  }
-  path
-}
-#' @keywords internal
-#' @importFrom datastructures binomial_heap insert peek pop
-a_star_pathfinder <- function(nodes, start, goal,
-                              hash_func = identity, search_node_env = NULL) {
-  if(start==goal)
-    return(list(start))
-  search_nodes <- if (!is.null(search_node_env)) search_node_env else list()
-  start_node <- make_search_node(start, gscore = 0,
-                                 fscore = 1)
-  start_hash <- hash_func(start)
-  search_nodes[[start_hash]] <- start_node
-  open_set <- binomial_heap("numeric")
-  insert(open_set, start_node$fscore, start_hash)
-  while (!is.null(peek(open_set))) {
-    crnt <- search_nodes[[pop(open_set)[[1]]]]
-    if(crnt$data==goal)
-      return(reconstruct_path(crnt))
-    crnt$out_openset <- TRUE
-    crnt$closed <- TRUE
-    for (neighbor in names(nodes[[crnt$data]])) {
-      indx <- hash_func(neighbor)
-      neigh_node <- search_nodes[[indx]]
-      if (is.null(neigh_node)) {
-        neigh_node <- search_nodes[[indx]] <-
-          make_search_node(neighbor, Inf, Inf)
-      }
-      if (neigh_node$closed) next
-      tentative_gscore <- crnt$gscore + nodes[[crnt$data]][neigh_node$data]
-      if (tentative_gscore >= neigh_node$gscore) next
-      neigh_node$came_from <- crnt
-      neigh_node$gscore <- tentative_gscore
-      neigh_node$fscore <-
-        tentative_gscore + 1
-      if (neigh_node$out_openset) {
-        neigh_node$out_openset <- FALSE
-        insert(open_set, neigh_node$fscore, indx)
-      }
-    }
-  }
-}
