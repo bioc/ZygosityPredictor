@@ -1894,6 +1894,92 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
   }
   return(full_output)
 }
+
+predict_per_variant <- function(purity, 
+                             sex,
+                             somCna, 
+                             geneModel=NULL,
+                             somSmallVars=NULL, 
+                             germSmallVars=NULL,
+                             ploidy=NULL, 
+                             colnameTcn=NULL,
+                             colnameCnaType=NULL,
+                             includeHomoDel=TRUE,
+                             includeIncompleteDel=TRUE,
+                             assumeSomCnaGaps=FALSE,
+                             byTcn=TRUE
+){
+  status <- info <- wt_cp <- . <- df_homdels <- df_all_mutations <- gene <-
+    final_phasing_info <- combined_read_details <-  final_output <-
+    uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
+    som_covered <- germ_covered <- final_phasing_info <- 
+    combined_snp_phasing <- NULL
+  ## check input for valid format
+  somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
+  germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
+  purity <- check_purity(purity)
+  ploidy <- check_ploidy(ploidy)
+  sex <- check_sex(sex)
+  geneModel <- check_gr_gene_model(geneModel)
+  assumeSomCnaGaps <- check_opt_assgap(assumeSomCnaGaps, ploidy)
+  somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
+                         assumeSomCnaGaps, colnameTcn, 
+                         colnameCnaType) 
+  includeIncompleteDel <- check_opt_incdel(includeIncompleteDel, ploidy)
+  includeHomoDel <- check_opt_incdel(includeHomoDel, ploidy)
+  # if(is.null(geneModel)){
+  #   ## only small variants can be evaulated
+  #   if(includeIncompleteDel==TRUE|includeHomoDel==TRUE){
+  #     includeIncompleteDel <- FALSE
+  #     includeHomoDel <- FALSE
+  #     warning("To include large deletions the geneModel muist be provided.",
+  #             "IncludeHomoDel and IncludeIncompleteDel will be FALSE")
+  #   }
+  #   templateGenes <- c(somSmallVars$gene, germSmallVars$gene)
+  # } else {
+    templateGenes <- geneModel$gene
+   #}
+  
+  ## get variants not covered by CNV input
+  if(!is.null(somSmallVars)){
+    gr_som_cov <- subsetByOverlaps(somSmallVars, somCna) 
+    som_covered <- gr_som_cov$mid
+  }
+  if(!is.null(germSmallVars)){
+    gr_germ_cov <- subsetByOverlaps(germSmallVars, somCna) 
+    germ_covered <- gr_germ_cov$mid
+  }
+  combined_uncovered <- combine_uncovered_input_variants(somSmallVars, 
+                                                         germSmallVars,
+                                                         som_covered,
+                                                         germ_covered,
+                                                         templateGenes)
+  ## preapre input data for prediction (pre-evaluation)
+  df_germ <- prepare_germline_variants(
+    gr_germ_cov, 
+    somCna, purity, sex)
+  df_som <- prepare_somatic_variant_table(
+    gr_som_cov, 
+    templateGenes, 
+    somCna, purity, sex)
+  df_homdels <- extract_all_dels_of_sample(somCna, geneModel, 
+                                           "homdel", byTcn, sex, ploidy,
+                                           includeHomoDel)
+  df_incompletedels <- extract_all_dels_of_sample(somCna, geneModel, 
+                                                  "incompletedel", TRUE, sex, 
+                                                  ploidy, includeIncompleteDel)
+  ## predict zygosity for each gene
+  if(!is.null(df_germ)|!is.null(df_som)|!is.null(df_homdels)){
+    df_all_mutations <- combine_main_variant_tables(df_germ, df_som, 
+                                                    df_homdels,
+                                                    templateGenes, purity)
+  }
+  evaluation_per_variant <- bind_incdel_to_pre_eval(df_incompletedels,
+                                                    df_all_mutations)
+  return(evaluation_per_variant)
+}
+
+
 #' predicts zygosity of a set of genes of a sample
 #' @param purity purity of the sample (numeric value between 0 and 1 indicating 
 #' the fraction of relevant sample with control/unrelevant tissue)
@@ -2049,53 +2135,29 @@ predict_zygosity <- function(purity,
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
     som_covered <- germ_covered <- final_phasing_info <- 
     combined_snp_phasing <- NULL
-  ## check input for valid format
-  somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
-  germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
-  purity <- check_purity(purity)
-  ploidy <- check_ploidy(ploidy)
-  sex <- check_sex(sex)
+  
+  evaluation_per_variant <- predict_per_variant(purity, 
+                                                sex,
+                                                somCna, 
+                                                geneModel,
+                                                somSmallVars, 
+                                                germSmallVars,
+                                                ploidy, 
+                                                colnameTcn,
+                                                colnameCnaType,
+                                                includeHomoDel,
+                                                includeIncompleteDel,
+                                                assumeSomCnaGaps,
+                                                byTcn)
+  
+  df_all_mutations <- evaluation_per_variant %>%
+    filter(!class=="incompletedel")
+  
   bamDna <- check_bam(bamDna)
-  geneModel <- check_gr_gene_model(geneModel)
-  assumeSomCnaGaps <- check_opt_assgap(assumeSomCnaGaps, ploidy)
-  somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
-                         assumeSomCnaGaps, colnameTcn, 
-                         colnameCnaType) 
-  includeIncompleteDel <- check_opt_incdel(includeIncompleteDel, ploidy)
-  includeHomoDel <- check_opt_incdel(includeHomoDel, ploidy)
   bamRna <- check_rna(bamRna)
   vcf <- check_vcf(vcf)
-  templateGenes <- geneModel$gene
-  ## get variants not covered by CNV input
-  if(!is.null(somSmallVars)){
-    gr_som_cov <- subsetByOverlaps(somSmallVars, somCna) 
-    som_covered <- gr_som_cov$mid
-  }
-  if(!is.null(germSmallVars)){
-    gr_germ_cov <- subsetByOverlaps(germSmallVars, somCna) 
-    germ_covered <- gr_germ_cov$mid
-  }
-  combined_uncovered <- combine_uncovered_input_variants(somSmallVars, 
-                                                         germSmallVars,
-                                                         som_covered,
-                                                         germ_covered,
-                                                         templateGenes)
-  ## preapre input data for prediction (pre-evaluation)
-  df_germ <- prepare_germline_variants(
-    gr_germ_cov, 
-    somCna, purity, sex)
-  df_som <- prepare_somatic_variant_table(
-    gr_som_cov, 
-    templateGenes, 
-    somCna, purity, sex)
-  df_homdels <- extract_all_dels_of_sample(somCna, geneModel, 
-                                             "homdel", byTcn, sex, ploidy,
-                                             includeHomoDel)
-  ## predict zygosity for each gene
-  if(!is.null(df_germ)|!is.null(df_som)|!is.null(df_homdels)){
-    df_all_mutations <- combine_main_variant_tables(df_germ, df_som, 
-                                                    df_homdels,
-                                                    templateGenes, purity)
+  
+  if(!is.null(df_all_mutations)){
     result_list <- lapply(
         unique(df_all_mutations$gene), 
         predict_zygosity_genewise, 
@@ -2123,14 +2185,10 @@ predict_zygosity <- function(purity,
         bind_rows()
     } 
   } 
-  ## include incomplete dels to output
-  df_incompletedels <- extract_all_dels_of_sample(somCna, geneModel, 
-                                              "incompletedel", TRUE, sex, 
-                                              ploidy, includeIncompleteDel) 
-  evaluation_per_variant <- bind_incdel_to_pre_eval(df_incompletedels,
-                                                   df_all_mutations)
-  evaluation_per_gene <- bind_incdel_to_final_eval(df_incompletedels,
-                                                   final_output)
+  evaluation_per_gene <- bind_incdel_to_final_eval(
+    evaluation_per_variant %>%
+      filter(class=="incompletedel"),
+    final_output)
   ## export output
   result_list <- list(
     eval_per_variant=evaluation_per_variant,
