@@ -1983,10 +1983,18 @@ predict_per_variant <- function(purity,
                                                     df_homdels,
                                                     templateGenes, purity)
   }
-  evaluation_per_variant <- bind_incdel_to_pre_eval(df_incompletedels,
-                                                    df_all_mutations)
-  return(list(evaluation_per_variant=evaluation_per_variant,
-              combined_uncovered=combined_uncovered))
+  if(is_pre_eval==TRUE){
+    return(list(evaluation_per_variant= 
+                  bind_incdel_to_pre_eval(df_incompletedels, df_all_mutations),
+                combined_uncovered=combined_uncovered
+      
+    ))
+  } else {
+    return(list(evaluation_per_variant=evaluation_per_variant,
+                df_incompletedels=df_incompletedels,
+                combined_uncovered=combined_uncovered))    
+  }
+
 }
 #' predicts zygosity of a set of genes of a sample
 #' @param purity purity of the sample (numeric value between 0 and 1 indicating 
@@ -2160,8 +2168,7 @@ predict_zygosity <- function(purity,
                                                 is_pre_eval=FALSE)
   evaluation_per_variant <- evaluation_per_variant_pre$evaluation_per_variant
   if(!is.null(evaluation_per_variant)){
-    df_all_mutations <- evaluation_per_variant %>%
-      filter(!class=="incompletedel")
+    df_all_mutations <- evaluation_per_variant
     if(!nrow(df_all_mutations)==0){
       bamDna <- check_bam(bamDna)
       bamRna <- check_rna(bamRna)
@@ -2194,8 +2201,7 @@ predict_zygosity <- function(purity,
       } 
     }
     evaluation_per_gene <- bind_incdel_to_final_eval(
-      evaluation_per_variant %>%
-        filter(class=="incompletedel"),
+      evaluation_per_variant_pre$df_incompletedels,
       final_output)
   }
   result_list <- list(
