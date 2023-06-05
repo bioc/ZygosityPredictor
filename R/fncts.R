@@ -945,9 +945,15 @@ general_gr_checks <- function(obj, type, lab){
 
 #' @keywords internal
 #' description follows
-check_gr_gene_model <- function(geneModel){
+check_gr_gene_model <- function(geneModel, is_pre_eval){
   . <- NULL
-  if(is.null(geneModel)){
+  if(is_pre_eval==TRUE){
+    if(is.null(geneModel)){
+      return(NULL)
+    } else {
+      return(general_gr_checks(geneModel, "gene_model", "geneModel"))
+    }
+  } else if(is.null(geneModel)){
     stop("input geneModel must not be NULL")
   } else {
     return(general_gr_checks(geneModel, "gene_model", "geneModel"))
@@ -1908,7 +1914,8 @@ predict_per_variant <- function(purity,
                              includeHomoDel=TRUE,
                              includeIncompleteDel=TRUE,
                              assumeSomCnaGaps=FALSE,
-                             byTcn=TRUE
+                             byTcn=TRUE,
+                             is_pre_eval=TRUE
 ){
   status <- info <- wt_cp <- . <- df_homdels <- df_all_mutations <- gene <-
     final_phasing_info <- combined_read_details <-  final_output <-
@@ -1921,7 +1928,7 @@ predict_per_variant <- function(purity,
   purity <- check_purity(purity)
   ploidy <- check_ploidy(ploidy)
   sex <- check_sex(sex)
-  geneModel <- check_gr_gene_model(geneModel)
+  geneModel <- check_gr_gene_model(geneModel, is_pre_eval)
   assumeSomCnaGaps <- check_opt_assgap(assumeSomCnaGaps, ploidy)
   somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                          assumeSomCnaGaps, colnameTcn, 
@@ -1977,7 +1984,8 @@ predict_per_variant <- function(purity,
   }
   evaluation_per_variant <- bind_incdel_to_pre_eval(df_incompletedels,
                                                     df_all_mutations)
-  return(evaluation_per_variant)
+  return(list(evaluation_per_variant=evaluation_per_variant,
+              combined_uncovered=combined_uncovered))
 }
 #' predicts zygosity of a set of genes of a sample
 #' @param purity purity of the sample (numeric value between 0 and 1 indicating 
@@ -2135,7 +2143,7 @@ predict_zygosity <- function(purity,
     som_covered <- germ_covered <- final_phasing_info <- 
     combined_snp_phasing <- evaluation_per_gene <- NULL
   
-  evaluation_per_variant <- predict_per_variant(purity, 
+  evaluation_per_variant_pre <- predict_per_variant(purity, 
                                                 sex,
                                                 somCna, 
                                                 geneModel,
@@ -2147,7 +2155,9 @@ predict_zygosity <- function(purity,
                                                 includeHomoDel,
                                                 includeIncompleteDel,
                                                 assumeSomCnaGaps,
-                                                byTcn)
+                                                byTcn,
+                                                is_pre_eval=FALSE)
+  evaluation_per_variant <- evaluation_per_variant_pre$evaluation_per_variant
   if(!is.null(evaluation_per_variant)){
     df_all_mutations <- evaluation_per_variant %>%
       filter(!class=="incompletedel")
@@ -2192,7 +2202,7 @@ predict_zygosity <- function(purity,
     eval_per_gene=evaluation_per_gene,
     phasing_info=final_phasing_info,
     readpair_info=combined_read_details,
-    uncovered_input=combined_uncovered,
+    uncovered_input=evaluation_per_variant_pre$combined_uncovered,
     ext_snp_phasing=combined_snp_phasing
   ) %>%
     compact()
