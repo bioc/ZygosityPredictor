@@ -2,6 +2,7 @@
 
 export(aff_germ_copies)
 export(aff_som_copies)
+export(predict_per_variant)
 export(predict_zygosity)
 importFrom(DelayedArray,rowRanges)
 importFrom(GenomicAlignments,first)
