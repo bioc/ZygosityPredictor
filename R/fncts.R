@@ -1990,7 +1990,7 @@ predict_per_variant <- function(purity,
       
     ))
   } else {
-    return(list(evaluation_per_variant=evaluation_per_variant,
+    return(list(evaluation_per_variant=df_all_mutations,
                 df_incompletedels=df_incompletedels,
                 combined_uncovered=combined_uncovered))    
   }
