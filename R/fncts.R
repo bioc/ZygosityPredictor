@@ -1894,7 +1894,8 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
   }
   return(full_output)
 }
-
+#' @importFrom IRanges subsetByOverlaps
+#' @export
 predict_per_variant <- function(purity, 
                              sex,
                              somCna, 
@@ -1927,18 +1928,18 @@ predict_per_variant <- function(purity,
                          colnameCnaType) 
   includeIncompleteDel <- check_opt_incdel(includeIncompleteDel, ploidy)
   includeHomoDel <- check_opt_incdel(includeHomoDel, ploidy)
-  # if(is.null(geneModel)){
-  #   ## only small variants can be evaulated
-  #   if(includeIncompleteDel==TRUE|includeHomoDel==TRUE){
-  #     includeIncompleteDel <- FALSE
-  #     includeHomoDel <- FALSE
-  #     warning("To include large deletions the geneModel muist be provided.",
-  #             "IncludeHomoDel and IncludeIncompleteDel will be FALSE")
-  #   }
-  #   templateGenes <- c(somSmallVars$gene, germSmallVars$gene)
-  # } else {
+  if(is.null(geneModel)){
+    ## only small variants can be evaulated
+    if(includeIncompleteDel==TRUE|includeHomoDel==TRUE){
+      includeIncompleteDel <- FALSE
+      includeHomoDel <- FALSE
+      warning("To include large deletions the geneModel muist be provided.",
+              "IncludeHomoDel and IncludeIncompleteDel will be FALSE")
+    }
+    templateGenes <- c(somSmallVars$gene, germSmallVars$gene)
+  } else {
     templateGenes <- geneModel$gene
-   #}
+  }
   
   ## get variants not covered by CNV input
   if(!is.null(somSmallVars)){
@@ -1978,8 +1979,6 @@ predict_per_variant <- function(purity,
                                                     df_all_mutations)
   return(evaluation_per_variant)
 }
-
-
 #' predicts zygosity of a set of genes of a sample
 #' @param purity purity of the sample (numeric value between 0 and 1 indicating 
 #' the fraction of relevant sample with control/unrelevant tissue)
@@ -2134,7 +2133,7 @@ predict_zygosity <- function(purity,
     final_phasing_info <- combined_read_details <-  final_output <-
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
     som_covered <- germ_covered <- final_phasing_info <- 
-    combined_snp_phasing <- NULL
+    combined_snp_phasing <- evaluation_per_gene <- NULL
   
   evaluation_per_variant <- predict_per_variant(purity, 
                                                 sex,
@@ -2149,16 +2148,14 @@ predict_zygosity <- function(purity,
                                                 includeIncompleteDel,
                                                 assumeSomCnaGaps,
                                                 byTcn)
-  
-  df_all_mutations <- evaluation_per_variant %>%
-    filter(!class=="incompletedel")
-  
-  bamDna <- check_bam(bamDna)
-  bamRna <- check_rna(bamRna)
-  vcf <- check_vcf(vcf)
-  
-  if(!is.null(df_all_mutations)){
-    result_list <- lapply(
+  if(!is.null(evaluation_per_variant)){
+    df_all_mutations <- evaluation_per_variant %>%
+      filter(!class=="incompletedel")
+    if(!nrow(df_all_mutations)==0){
+      bamDna <- check_bam(bamDna)
+      bamRna <- check_rna(bamRna)
+      vcf <- check_vcf(vcf)   
+      result_list <- lapply(
         unique(df_all_mutations$gene), 
         predict_zygosity_genewise, 
         df_all_mutations, 
@@ -2169,27 +2166,27 @@ predict_zygosity <- function(purity,
         purity,
         vcf,
         distCutOff)
-    pre_scoring <- lapply(result_list, nth, n=1) %>% 
-      bind_rows()
-    final_result_list <- lapply(result_list, nth, n=2) %>% compact()
-    if(length(final_result_list)!=0){
-      final_phasing_info <- lapply(final_result_list, nth, n=2) %>% 
-        compact() %>% 
-        bind_rows() 
-      final_output <- lapply(final_result_list, nth, n=1) %>% 
-        bind_rows() %>%
-        select(gene, status, info)
-      combined_read_details <- lapply(result_list, nth, n=3) %>% compact() %>%
+      pre_scoring <- lapply(result_list, nth, n=1) %>% 
         bind_rows()
-      combined_snp_phasing <- lapply(result_list, nth, n=4) %>% compact() %>%
-        bind_rows()
-    } 
-  } 
-  evaluation_per_gene <- bind_incdel_to_final_eval(
-    evaluation_per_variant %>%
-      filter(class=="incompletedel"),
-    final_output)
-  ## export output
+      final_result_list <- lapply(result_list, nth, n=2) %>% compact()
+      if(length(final_result_list)!=0){
+        final_phasing_info <- lapply(final_result_list, nth, n=2) %>% 
+          compact() %>% 
+          bind_rows() 
+        final_output <- lapply(final_result_list, nth, n=1) %>% 
+          bind_rows() %>%
+          select(gene, status, info)
+        combined_read_details <- lapply(result_list, nth, n=3) %>% compact() %>%
+          bind_rows()
+        combined_snp_phasing <- lapply(result_list, nth, n=4) %>% compact() %>%
+          bind_rows()
+      } 
+    }
+    evaluation_per_gene <- bind_incdel_to_final_eval(
+      evaluation_per_variant %>%
+        filter(class=="incompletedel"),
+      final_output)
+  }
   result_list <- list(
     eval_per_variant=evaluation_per_variant,
     eval_per_gene=evaluation_per_gene,
