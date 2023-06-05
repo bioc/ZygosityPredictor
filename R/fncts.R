@@ -879,11 +879,12 @@ assign_correct_colnames <- function(obj, type){
     elementMetadata(obj)[,"tcn"] <- 
       elementMetadata(obj)[,col_tcn]   
     if("LOH" %in% nm_md(obj)){
-      obj$cna_type <- case_when(obj$LOH==T ~ "LOH",
+      obj$cna_type <- case_when(obj$LOH==TRUE ~ "LOH",
                                     TRUE ~ "HZ")
     } else {
       col_cna_type <- str_match(
-        nm_md(obj), paste(allowed_inputs("colnames_cna_type"), collapse="|")) %>%
+        nm_md(obj), paste(allowed_inputs("colnames_cna_type"), 
+                          collapse="|")) %>%
         .[which(!is.na(.))]   
       elementMetadata(obj)[,"cna_type"] <- 
         elementMetadata(obj)[,col_cna_type]
