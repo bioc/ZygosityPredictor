@@ -677,7 +677,7 @@ extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE,
             ) %>%
             return()
         }
-      })%>% compact() %>% bind_rows()
+      })%>% compact() %>% bind_rows() %>% unique()
       if(nrow(merged_CNAs)==0){
         return(NULL)
       } else {
