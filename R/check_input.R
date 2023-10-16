@@ -302,10 +302,17 @@ check_bam <- function(bamDna){
 check_vcf <- function(vcf){
   if(is.null(vcf)){
     return(NULL)
-  } else if(sum(unlist(lapply(vcf, file.exists)))==length(vcf)){
-    return(vcf)
+  } else if(!sum(unlist(lapply(vcf, file.exists)))==length(vcf)){
+    stop("one of input vcfs does not exist")
   } else {
-    stop("input vcf does not exist")
+    processed_vcf <- lapply(vcf, function(VCF){
+      if(file.exists(paste0(VCF, ".tbi"))){
+        return(TabixFile(VCF))
+      } else {
+        return(VCF)
+      }
+    })
+    return(processed_vcf)
   }
 }
 #' @keywords internal

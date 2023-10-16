@@ -1,3 +1,62 @@
+load_vars_from_vcf <- function(vcf, df_gene, gr_roi){
+  vars_in_between_raw <- lapply(vcf, function(VCF){
+    tab_vcf <- TabixFile(VCF)
+    vcf_region <- 
+      readVcf(tab_vcf, "hg19", 
+              param=gr_roi) %>%
+      rowRanges() %>%
+      return()
+  }) %>%
+    Reduce(function(x,y)c(x,y),.) %>%
+    as_tibble() %>%
+    ## maybe improve handling of more entries in DNAstringLists
+    ## now it takes the first
+    mutate(ALT=unlist(lapply(ALT, function(x){as.character(x[[1]][1])}))) %>%
+    rowwise() %>%
+    mutate(ALT=as.character(ALT),
+           class=define_class(REF, ALT)) %>%
+    select(1,2,3, ref=REF, alt=ALT, class) %>%
+    unique() %>%
+    select(-end) %>%
+    dplyr::rename(pos=start, chr=seqnames) %>%
+    left_join(df_gene %>% select(chr, pos, mut_id),
+              by=c("chr"="chr",
+                   "pos"="pos")) %>%
+    arrange(mut_id) %>%
+    ungroup() 
+  return(vars_in_between_raw)
+}
+#' @keywords internal
+#' @importFrom stringr %>%
+#' @importFrom Rsamtools TabixFile
+#' @importFrom VariantAnnotation readVcf
+#' @importFrom DelayedArray rowRanges
+#' @importFrom GenomicRanges GRanges
+#' @importFrom dplyr rename arrange as_tibble left_join mutate ungroup rowwise ungroup select
+check_for_snps_between_main_muts <- function(main_comb, vcf, df_gene,
+                                             snp_dist=0){
+  . <- ALT <- REF <- end <- start <- seqnames <- chr <- pos <- mut_id <- NULL
+  pos_minor <- as.numeric(min(main_comb[['pos2']],
+                              main_comb[['pos1']]))-snp_dist
+  pos_major <- as.numeric(max(main_comb[['pos2']],
+                              main_comb[['pos1']]))+snp_dist
+  gr_roi <- GRanges(paste0(main_comb[["chr1"]], ":",
+                           pos_minor, "-", pos_major))
+  vars_in_between_raw <- load_vars_from_vcf(vcf, df_gene, gr_roi) %>%
+    
+    ## remove main mutations if they are in between... because would be
+    ## duplicated with upper analysis
+    filter(is.na(mut_id)|
+             mut_id %in% c(main_comb[["mut_id1"]], main_comb[["mut_id2"]])) %>%
+    mutate(
+      pos = as.numeric(pos),
+      site=case_when(
+        between(pos, pos_minor, pos_major) ~ "between",
+        pos>pos_major ~ "downstream",
+        pos<pos_minor ~ "upstream"
+      ))
+  return(vars_in_between_raw)
+}
 #' @keywords internal
 #' @importFrom stringr %>% str_split
 #' @importFrom dplyr bind_rows mutate_at

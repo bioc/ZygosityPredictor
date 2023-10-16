@@ -1138,65 +1138,6 @@ classify_reads <- function(line, bamDna, bamRna, verbose){
   } 
   return(classified_reads)
 }
-load_vars_from_vcf <- function(vcf, df_gene, gr_roi){
-  vars_in_between_raw <- lapply(vcf, function(VCF){
-    tab_vcf <- TabixFile(VCF)
-    vcf_region <- 
-      readVcf(tab_vcf, "hg19", 
-              param=gr_roi) %>%
-      rowRanges() %>%
-      return()
-  }) %>%
-    Reduce(function(x,y)c(x,y),.) %>%
-    as_tibble() %>%
-    ## maybe improve handling of more entries in DNAstringLists
-    ## now it takes the first
-    mutate(ALT=unlist(lapply(ALT, function(x){as.character(x[[1]][1])}))) %>%
-    rowwise() %>%
-    mutate(ALT=as.character(ALT),
-           class=define_class(REF, ALT)) %>%
-    select(1,2,3, ref=REF, alt=ALT, class) %>%
-    unique() %>%
-    select(-end) %>%
-    dplyr::rename(pos=start, chr=seqnames) %>%
-    left_join(df_gene %>% select(chr, pos, mut_id),
-              by=c("chr"="chr",
-                   "pos"="pos")) %>%
-    arrange(mut_id) %>%
-    ungroup() 
-  return(vars_in_between_raw)
-}
-#' @keywords internal
-#' @importFrom stringr %>%
-#' @importFrom Rsamtools TabixFile
-#' @importFrom VariantAnnotation readVcf
-#' @importFrom DelayedArray rowRanges
-#' @importFrom GenomicRanges GRanges
-#' @importFrom dplyr rename arrange as_tibble left_join mutate ungroup rowwise ungroup select
-check_for_snps_between_main_muts <- function(main_comb, vcf, df_gene,
-                                             snp_dist=0){
-  . <- ALT <- REF <- end <- start <- seqnames <- chr <- pos <- mut_id <- NULL
-  pos_minor <- as.numeric(min(main_comb[['pos2']],
-                   main_comb[['pos1']]))-snp_dist
-  pos_major <- as.numeric(max(main_comb[['pos2']],
-                   main_comb[['pos1']]))+snp_dist
-  gr_roi <- GRanges(paste0(main_comb[["chr1"]], ":",
-                                          pos_minor, "-", pos_major))
-  vars_in_between_raw <- load_vars_from_vcf(vcf, df_gene, gr_roi) %>%
- 
-    ## remove main mutations if they are in between... because would be
-    ## duplicated with upper analysis
-    filter(is.na(mut_id)|
-             mut_id %in% c(main_comb[["mut_id1"]], main_comb[["mut_id2"]])) %>%
-    mutate(
-      pos = as.numeric(pos),
-      site=case_when(
-        between(pos, pos_minor, pos_major) ~ "between",
-          pos>pos_major ~ "downstream",
-          pos<pos_minor ~ "upstream"
-    ))
-  return(vars_in_between_raw)
-}
 #' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom dplyr mutate as_tibble
@@ -1267,12 +1208,42 @@ get_genotype <- function(gt, status){
   } 
 }
 
+loadVcf <- function(phasedVcf, chrom, region_to_load, refGen){
+  ## first check which format input vcf has
+  lapply(phasedVcf, function(VCF){
+    if(is(VCF, "TabixFile")){
+      if(chrom %in% seqnamesTabix(VCF)){
+        loadedVcf <- 
+          readVcf(VCF, refGen, 
+                  param=region_to_load)
+        gt <- VariantAnnotation::geno(loadedVcf)$GT %>% as.character()
+        combVcf <- rowRanges(loadedVcf)
+        combVcf$gt <- gt
+      } else {
+        return(NULL)
+      }
+    } else {
+      if(str_detect(VCF, paste0("chr", chrom, "[^0-9]"))){
+        loadedVcf <- VariantAnnotation::readVcf(vcf_to_load, refGen)
+        gt <- VariantAnnotation::geno(loadedVcf)$GT %>% as.character()
+        comb_vcf <-  subsetByOverlaps(rowRanges(loadedVcf), region_to_load)
+        combVcf$gt <- gt
+      } else {
+        return(NULL)
+      }
+    }
+    return(combVcf)
+  }) %>%
+    compact() %>%
+    c(recursive=TRUE) %>%
+    return()
+}
 
 perform_level_2_phasing <- function(df_gene, vcf, haploBlocks, phasedVcf,
                          bamDna, bamRna, 
                         purity, snp_dist=10000, distCutOff,
                         printLog, verbose,
-                        geneDir){
+                        geneDir, refGen){
   
   catt(printLog, 4, "Initializing level 2 phasing")
   #print(paste("GENE:", unique(df_gene$gene)))
@@ -1313,22 +1284,23 @@ perform_level_2_phasing <- function(df_gene, vcf, haploBlocks, phasedVcf,
       #print(HAP_ID)
       region_to_load <- haploBlocks[which(haploBlocks$hap_id==HAP_ID)]
       
-      vcf_to_load <- phasedVcf %>% .[which(str_detect(., paste0("chr",unique(df_gene$chr), ".vcf")))]
-      #print(region_to_load)
-      #print("loading vcf")
-      #print(vcf_to_load)
-      vcf_region <- 
-        VariantAnnotation::readVcf(vcf_to_load, "hg19")
-      
-      #print("vcf loaded")
-      gt <- VariantAnnotation::geno(vcf_region)$GT %>% as.character()
-      comb_vcf <- rowRanges(vcf_region)
-      comb_vcf$gt <- gt
-      
-      #print(comb_vcf)
-      #print(region_to_load)
-      
-      phased_snps_in_haploblock <- subsetByOverlaps(comb_vcf, region_to_load) %>%
+      # vcf_to_load <- phasedVcf %>% .[which(str_detect(., paste0("chr",unique(df_gene$chr), ".vcf")))]
+      # #print(region_to_load)
+      # #print("loading vcf")
+      # #print(vcf_to_load)
+      # vcf_region <- 
+      #   VariantAnnotation::readVcf(vcf_to_load, "hg19")
+      # 
+      # #print("vcf loaded")
+      # gt <- VariantAnnotation::geno(vcf_region)$GT %>% as.character()
+      # comb_vcf <- rowRanges(vcf_region)
+      # comb_vcf$gt <- gt
+      # 
+      # #print(comb_vcf)
+      # #print(region_to_load)
+      # 
+       phased_snps_in_haploblock <- loadVcf(phasedVcf, unique(df_gene$chr), 
+                                            region_to_load, refGen) %>%
         as_tibble() %>%
         filter(str_detect(gt, "\\|")) %>%
         filter(!gt=="1|1") 
@@ -1633,7 +1605,7 @@ select_status <- function(status_direct, status_indirect){
 #' @importFrom dplyr mutate nth select filter bind_rows
 phase <- function(df_gene, bamDna, bamRna, 
                   showReadDetail, purity, vcf, haploBlocks, phasedVcf,
-                  distCutOff, printLog, verbose, logDir){
+                  distCutOff, printLog, verbose, logDir, refGen){
   pos1 <- pos2 <- mut_id1 <- mut_id2 <- qname.first <- result <- . <- origin <- 
     qname <- mut_id <- nreads <- status <- geneDir <- NULL
   if(!is.null(logDir)){
@@ -1669,7 +1641,7 @@ phase <- function(df_gene, bamDna, bamRna,
                                                       purity, snp_dist=10000, 
                                                       distCutOff,
                                                       printLog, verbose,
-                                                      geneDir)
+                                                      geneDir, refGen)
     vm("indirect phasing done", verbose)
     if(!is.null(indirect_phasing_result)){
       merged_comb_indirect <- left_join(all_combinations,
@@ -1844,7 +1816,7 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
                                       bamRna, showReadDetail,
                                       printLog, purity, vcf, haploBlocks,
                                       phasedVcf, distCutOff, 
-                                      verbose, logDir){
+                                      verbose, logDir, refGen){
   if(printLog==TRUE){
     message(GENE)
   }
@@ -1914,7 +1886,7 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
       ## second one indirect phasing combinations
       full_phasing_result <- phase(df_gene, bamDna, bamRna, showReadDetail,
                         purity, vcf, haploBlocks, phasedVcf,
-                        distCutOff, printLog, verbose, logDir)
+                        distCutOff, printLog, verbose, logDir, refGen)
       vm("full phasing done", verbose)
       all_comb <- full_phasing_result[[1]] %>%
         mutate(gene=GENE)
@@ -2380,7 +2352,8 @@ predict_zygosity <- function(purity,
                              phasedVcf=NULL,
                              distCutOff=5000,
                              verbose=FALSE,
-                             logDir=NULL
+                             logDir=NULL,
+                             refGen="hg19"
                              ){
   status <- info <- wt_cp <- . <- df_homdels <- df_all_mutations <- gene <-
     final_phasing_info <- combined_read_details <-  final_output <-
@@ -2411,6 +2384,7 @@ predict_zygosity <- function(purity,
       logDir <- check_logDir(logDir)
       vcf <- check_vcf(vcf) 
       haploBlocks <- check_haploblocks(haploBlocks)
+      phasedVcf <- check_vcf(phasedVcf)
       #vm("initializing evaluation per gene", verbose)
       result_list <- lapply(
         unique(df_all_mutations$gene), 
@@ -2426,7 +2400,8 @@ predict_zygosity <- function(purity,
         phasedVcf,
         distCutOff, 
         verbose,
-        logDir)
+        logDir,
+        refGen)
       #print(result_list)
       pre_scoring <- lapply(result_list, nth, n=1) %>% 
         bind_rows()
