@@ -4,10 +4,6 @@ catt <- function(printLog, level, text){
     message(rep("  ", level), text)
   }
 }
-check_haploblocks <- function(haploBlocks){
-  haploBlocks$hap_id <- seq(1, length(haploBlocks))
-  return(haploBlocks)
-}
 #' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom GenomicRanges GRanges elementMetadata
@@ -40,7 +36,7 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
     param=ScanBamParam(
       which=GRanges(seqnames = ref_chr1, 
                                    ranges = ref_pos1),
-      what=c("qname","seq", "cigar")
+      what=c("qname","seq", "cigar", "mapq", "qual")
     )) 
   if(length(all_covering_read_pairs)==0){
     return(tibble())
@@ -64,27 +60,6 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
     ]
     return(filtered_reads)
   }
-}
-#' @keywords internal
-allowed_inputs <- function(which_one){
-  . <- NULL
-  type_list <- list(
-    cna_homdel_annotation = paste(c("HOMDEL", "HomoDel", "HomoDEL", "HOMODEL", 
-                                    "HomDel", "homdel"),collapse = "|"),
-    cna_incompletedel_annotation = c("DEL", "del", "Del"),
-    chrom_names = c(
-      c(seq_len(23), "X", "Y"),
-      paste0("chr", c(seq_len(23), "X", "Y"))
-    ),
-    colnames_gene = c("GENE", "gene", "Gene", 
-                      "Gene_name", "GENE_NAME", "gene_name"),
-    colnames_af = c("AF", "af", "Af"),
-    colnames_ref = c("REF", "ref", "Ref"),
-    colnames_alt = c("ALT", "alt","Alt"),
-    colnames_tcn = c("TCN", "tcn", "Tcn"),
-    colnames_cna_type = c("cna_type", "CNA_type", "Cna_Type", "CNA_Type")
-  )
-  return(type_list[[which_one]])
 }
 #' @keywords internal
 #' @importFrom stringr %>%
@@ -299,44 +274,243 @@ classify_combination <- function(classified_reads, purity, eval_full, printLog,
 #' @importFrom stringr %>% str_detect str_match_all str_sub
 #' @importFrom tibble rownames_to_column
 #' @importFrom dplyr mutate left_join bind_rows mutate tibble filter
-make_read_overview <- function(read_start, seq, cigar){
+make_read_overview <- function(read_start, seq, cigar, qual){
   . <- element <- width <- end <- NULL
-  raw_cigs <- str_match_all(cigar, 
-                            '\\d*[:upper:]') %>% 
+  ## first probably replaceable by cigarRangesAlongQuerySpace(cigar)
+  raw_cigs <- str_match_all(cigar,
+                            '\\d*[:upper:]') %>%
     unlist() %>%
     tibble(element=.) %>%
     mutate(
-      width=str_sub(element, start = 1, end=nchar(element)-1) %>% 
+      width=str_sub(element, start = 1, end=nchar(element)-1) %>%
         as.numeric(),
       type=str_sub(element, start = nchar(element), end=nchar(element))
     ) %>%
     filter(width!=0) %>%
     rownames_to_column("id")
-  raw_maps <- 
+  raw_maps <-
     raw_cigs[which(!str_detect(raw_cigs$element, "D|N")),] %>%
     mutate(to_extract=cumsum(width)) %>%
     apply(.,1,function(cig){
       if(cig[["id"]]==1){
         curr_seq <- str_sub(seq, start=1, end=cig[["width"]])
+        curr_qual <- str_sub(qual, start=1, end=cig[["width"]])
       } else {
-        curr_seq <- str_sub(seq, 
+        curr_seq <- str_sub(seq,
                             start=as.numeric(cig[["to_extract"]])-
-                              as.numeric(cig[["width"]])+1, 
+                              as.numeric(cig[["width"]])+1,
+                            end=cig[["to_extract"]])
+        curr_qual <- str_sub(qual,
+                            start=as.numeric(cig[["to_extract"]])-
+                              as.numeric(cig[["width"]])+1,
                             end=cig[["to_extract"]])
       }
       return(list(id=cig[["id"]],
-                  seq=curr_seq))
+                  seq=curr_seq,
+                  qual=curr_qual))
     }) %>% bind_rows()
-  comb <- left_join(raw_cigs, raw_maps, by="id")  
-  rel <- 
+  comb <- left_join(raw_cigs, raw_maps, by="id")
+  rel <-
     comb[which(comb$type %in% c("M", "D", "N")),] %>%
     mutate(end=cumsum(width),
            start=end-width+1,
            map_start=read_start+end-width,
-           map_end=read_start+end-1)
-  full <- left_join(comb, rel[c(1,8,9)], by="id")
+           map_end=read_start+end-1) %>%
+    select(id, map_start, map_end, start, end)
+  full <- left_join(comb, rel, by="id")
   return(full)
 }
+make_read_overview_new <- function(read_start, seq, cigar, qual){
+    ## parse cigar string according to query
+  cigq <- GenomicAlignments::cigarRangesAlongQuerySpace(cigar,
+                                                        with.ops = T)%>%
+    unlist() %>% as.data.frame() %>%
+    set_names(.,nm=paste0(names(.), "_q"))
+  ## parse cigar string according to reference
+  cigr <- GenomicAlignments::cigarRangesAlongReferenceSpace(cigar,
+                                                        with.ops = F)%>%
+    unlist() %>% as.data.frame() %>%
+    set_names(.,nm=paste0(names(.), "_r"))
+  ## combine them and extract relevant bases and quality from sequence
+  raw_cigs_new <- bind_cols(cigq, cigr) %>%
+    rowwise() %>%
+    mutate(seq=str_sub(seq, start=start_q, end=end_q) %>% na_if(""),
+           qual=str_sub(qual, start=start_q, end=end_q) %>% na_if(""),
+           width=max(width_q, width_r),
+           map_start=read_start+end_r-width,
+           map_end=read_start+end_r-1) %>%
+    select(width, type=names_q, seq, qual, map_start, map_end, start=start_r, 
+           end=end_r)
+  return(raw_cigs_new)
+}
+
+extract_subseq <- function(ref_pos, element_mut, parsed_read, 
+                           length_indel, string){
+  # print(parsed_read)
+  # print(str_sub(element_mut[[string]], start=ref_pos-element_mut$map_start+1, 
+  #               end=-1))
+  # print(      paste(parsed_read[seq(as.numeric(element_mut$id)+1, 
+  #                                   nrow(parsed_read), 1)][[string]], collapse=""))
+  pos_in_seq <- ref_pos-element_mut$map_start+1
+  subseq_in_element <- str_sub(element_mut[[string]], start=pos_in_seq, 
+                               end=-1)
+  subseq_in_following_elements <- parsed_read[which(as.numeric(parsed_read$id)>as.numeric(element_mut$id)),] %>%
+    pull(all_of(string)) %>%
+    na.omit() %>%
+    paste(collapse="")
+  
+  full_remaining <- paste0(subseq_in_element, subseq_in_following_elements)
+ # print(parsed_read)
+#  print(subseq_in_element)
+#  print(subseq_in_following_elements)
+#  print(full_remaining)
+ # print(length_indel)
+  
+  return(str_sub(full_remaining, start=1, end=length_indel))
+}
+
+
+extract_snv <- function(ref_pos, element_mut){
+  ## get cigar element in which reference position in located
+  pos_in_seq <- ref_pos-element_mut$map_start+1
+    base <- 
+      str_sub(element_mut$seq,
+              start=pos_in_seq,
+              end=pos_in_seq) 
+    qual <- 
+      str_sub(element_mut$qual,
+              start=pos_in_seq,
+              end=pos_in_seq)  
+  return(tibble(base=base, qual=qual, info="mapped", len_indel=NA,
+                exp_indel=NA))
+}
+
+extract_insertion <- function(ref_pos, parsed_read, element_mut, length_ins){
+  ## insertion are always indicated by the I type. The reference position tells
+  ## the position in front of the I segment, which means we are looking for
+  ## the subsequent one type
+  expected_indel_detected <- FALSE
+  len <- NA
+  if(as.numeric(element_mut$id)==nrow(parsed_read)){
+    if(ref_pos==element_mut$map_end){
+      info <- 
+        "no insertion detected: ref pos is last mapped base of read" 
+    } else {
+      info <- 
+        "no insertion detected: ref pos mapped in last element of parsed read"      
+    }
+    base <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "seq")
+    qual <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "qual")
+  } else if("I" %in% parsed_read$type){
+    ## insertion detected... check if it is the matching one
+    if(ref_pos==element_mut$map_end){
+      ## if insertion is at refrence position, the subsequent position is an a
+      ## new elemnt labelled as I
+      next_element <- parsed_read[as.numeric(element_mut$id)+1,]
+      if(next_element$type=="I"){
+        ## insertion detected at position.. extract inserted sequence
+        base <- paste0(
+          str_sub(element_mut$seq, start=-1, end=-1),
+          next_element$seq
+        )
+        qual <- paste0(
+          str_sub(element_mut$qual, start=-1, end=-1),
+          next_element$qual
+        )
+        info <- "insertion detected"
+        len <- next_element$width
+        expected_indel_detected <- TRUE
+      } else {
+        info <- paste(next_element$type, "detected - wrong class")
+        base <- extract_subseq(ref_pos, element_mut, parsed_read, length_ins, "seq")
+        qual <- extract_subseq(ref_pos, element_mut, parsed_read, length_ins, "qual")
+      }
+    } else {
+      info <- "no insertion detected: ref pos not mapped to end of element"
+      base <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "seq")
+      qual <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "qual")
+    }
+  } else {
+    ## no inserttion detected.. extract base at position to get base quality
+    info <- "no insertion detected: no I in cigar"
+    base <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "seq")
+    qual <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "qual")
+  }
+  return(tibble(base=base, qual=qual, info=info, len_indel=len, 
+                exp_indel=expected_indel_detected))
+}
+
+extract_deletion <- function(ref_pos, parsed_read, element_mut, length_del){
+  expected_indel_detected <- FALSE
+  len <- NA
+  if(as.numeric(element_mut$id)==nrow(parsed_read)){
+    if(ref_pos==element_mut$map_end){
+      info <- 
+        "no deletion detected: ref pos is last mapped base of read" 
+    } else {
+      info <- 
+        "no delection detected: ref pos mapped in last element of parsed read"      
+    }
+    base <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "seq")
+    qual <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "qual")
+  } else if("D" %in% parsed_read$type){
+    ## insertion detected... check if it is the matching one
+    if(ref_pos==element_mut$map_end){
+      ## if insertion is at refrence position, the subsequent position is an a
+      ## new elemnt labelled as D
+      next_element <- parsed_read[as.numeric(element_mut$id)+1,]
+      if(next_element$type=="D"){
+        expected_indel_detected <- TRUE
+        info <- "deletion detected"
+        len <- next_element$width
+      } else {
+        info <- "no deletion detected: subsequent element not I"
+      }
+    } else {
+      info <- "no insertion detected: ref pos not mapped to end of element"
+    }      
+    base <- extract_subseq(ref_pos, element_mut, parsed_read, length_del, "seq")
+    qual <- extract_subseq(ref_pos, element_mut, parsed_read, length_del, "qual")
+  } else {
+    ## no inserttion detected.. extract base at position to get base quality
+    info <- "no insertion detected: no I in cigar"
+    base <- extract_subseq(ref_pos, element_mut, parsed_read, length_del, "seq")
+    qual <- extract_subseq(ref_pos, element_mut, parsed_read, length_del, "qual")
+  }
+  return(tibble(base=base, qual=qual, info=info, len_indel=len,
+                exp_indel=expected_indel_detected))
+}
+
+cigar_element <- function(parsed_read, ref_pos){
+  parsed_read %>% rowwise() %>%
+    filter(between(ref_pos, map_start, map_end)) %>%
+    .[1,] %>% return()
+}
+
+extract_base_at_refpos <- function(parsed_read, ref_pos, class, ref_alt, ref_ref){
+  ## extract elemnt containing reference position from parsed read
+  element_mut <- cigar_element(parsed_read, ref_pos)
+  ## if position is inside N or D type, the read does not cover the position
+  ## N means for example skipped exon in RNA
+  ## D wouldmean the position is deleted
+  ## real deletions are still mapped in the M part
+  if(element_mut$type %in% c("N", "D")){
+    base_info <- tibble(base=NA, qual=NA, info="position skipped/deleted", 
+                        len_indel=NA, exp_indel=NA)
+  } else if(class=="snv"){
+    base_info <- extract_snv(ref_pos, element_mut)
+  } else if(class=="ins"){
+    base_info <- extract_insertion(ref_pos, parsed_read, element_mut, 
+                                   nchar(ref_alt)-nchar(ref_ref))
+  } else if(class=="del"){
+    base_info <- extract_deletion(ref_pos, parsed_read, element_mut, 
+                                  1+abs(nchar(ref_ref)-nchar(ref_alt)))
+  } else {
+    stop("class of variant needs to be provided")
+  }
+  return(base_info %>% mutate(class=class, mapq=element_mut$mapq))
+}
+
 #' @keywords internal
 #' @importFrom stringr %>% str_replace str_sub
 #' @importFrom dplyr between case_when rowwise filter
@@ -356,6 +530,10 @@ check_mut_presence <- function(read_structure, ref_pos,
         str_sub(element_mut$seq,
                 start=pos_in_seq,
                 end=pos_in_seq) 
+      qual <- 
+        str_sub(element_mut$qual,
+                start=pos_in_seq,
+                end=pos_in_seq)
       #vm(paste("base:",base), verbose)
       #vm(paste("alt:",ref_alt), verbose)
       #vm(paste("ref:",ref_ref), verbose)
@@ -371,6 +549,8 @@ check_mut_presence <- function(read_structure, ref_pos,
         .[which(.$type=="I"),] 
       if(nrow(cat_at_pos)==0){
         mut_at_read <- 0
+        base <- NA
+        qual <- NA
       } else {  
         length_ins <- str_replace(ref_alt, paste0("^", ref_ref), "") %>%
           nchar()
@@ -379,6 +559,8 @@ check_mut_presence <- function(read_structure, ref_pos,
         } else {
           mut_at_read <- -2
         }
+        base <- cat_at_pos[1,]$seq
+        qual <- cat_at_pos[1,]$qual
       }
     } else if(ref_class=="del"){
       cat_at_pos <- 
@@ -387,10 +569,14 @@ check_mut_presence <- function(read_structure, ref_pos,
       
       if(nrow(cat_at_pos)==0){
         mut_at_read <- 0
+        base <- NA
+        qual <- NA
       } else {  
-        length_ins <- str_replace(ref_ref, paste0("^", ref_alt), "") %>%
+        length_del <- str_replace(ref_ref, paste0("^", ref_alt), "") %>%
           nchar()
-        if(length_ins==cat_at_pos[1,]$width){
+        base <- NA
+        qual <- NA
+        if(length_del==cat_at_pos[1,]$width){
           mut_at_read <- 1
         } else {
           mut_at_read <- -2
@@ -398,7 +584,50 @@ check_mut_presence <- function(read_structure, ref_pos,
       }
     }
   }
-  return(mut_at_read)
+  return(tibble(base=base,
+                qual=qual,
+                mut_at_read=mut_at_read))
+}
+parse_cigar <- function(bam, qname){
+  paired_reads <- bam[which(bam$qname==qname)] %>%
+    .[which(as.character(seqnames(.)) %in%
+              allowed_inputs("chrom_names"))] %>%
+    as_tibble() %>%
+    rownames_to_column("mate") %>%
+  #parsed_read <- 
+    apply(., 1, function(READ){
+    make_read_overview_new(as.numeric(READ[["start"]]),
+                           READ[["seq"]],
+                           READ[["cigar"]],
+                           READ[["qual"]]) %>%
+      mutate(mate=READ[["mate"]],
+             mapq=READ[["mapq"]],
+             origin=READ[["origin"]])
+  }) %>% bind_rows()  %>% 
+    rownames_to_column("id") %>%
+    return()
+}
+evaluate_base <- function(base_info, ref_alt, ref_ref){
+  if(base_info$class=="snv"){
+    detected <- case_when(
+      base_info$base==ref_alt ~ 1,
+      base_info$base==ref_ref ~ 0,
+      TRUE ~ -2
+    )
+  } else if(base_info$class=="ins"){
+    detected <- case_when(
+      base_info$base==ref_alt ~ 1,
+      base_info$base==ref_ref ~ 0,
+      TRUE ~ -2
+    )
+  } else {
+    detected <- case_when(
+      base_info$len_indel==abs(nchar(ref_alt)-nchar(ref_ref)) ~ 1,
+      is.na(base_info$len_indel) ~ 0,
+      TRUE ~ -2
+    )
+  }
+  return(detected)
 }
 #' @keywords internal
 #' description follows
@@ -407,77 +636,43 @@ check_mut_presence <- function(read_structure, ref_pos,
 #' @importFrom purrr set_names
 #' @importFrom dplyr case_when bind_rows as_tibble mutate
 #' @importFrom GenomicRanges seqnames
-core_tool <- function(qname, bam, 
+core_tool <- function(qname, bam,
                       ref_pos1, ref_pos2,
-                      ref_alt1, ref_alt2, 
+                      ref_alt1, ref_alt2,
                       ref_ref1, ref_ref2,
-                      ref_class1, ref_class2, verbose=FALSE){
+                      ref_class1, ref_class2,
+                      verbose=FALSE, version="old"){
   . <- NULL
-  paired_reads <- bam[which(bam$qname==qname)] %>%
-    .[which(as.character(seqnames(.)) %in% 
-              allowed_inputs("chrom_names"))] %>%
-    as_tibble() %>%
-    rownames_to_column("mate")
-  if(length(paired_reads)!=0){
-    
-    read_structure <- apply(paired_reads, 1, function(READ){
-      make_read_overview(as.numeric(READ[["start"]]),
-                         READ[["seq"]],
-                         READ[["cigar"]]) %>%
-        mutate(mate=READ[["mate"]])
-    }) %>% bind_rows() 
-    mut1_in_read <- check_mut_presence(read_structure, ref_pos1,
-                                          ref_alt1, ref_ref1, ref_class1,
-                                       verbose)
-    mut2_in_read <- check_mut_presence(read_structure, ref_pos2,
-                                          ref_alt2, ref_ref2, ref_class2,
-                                       verbose)
+  ## parse read according to cigar string
+  parsed_read <- parse_cigar(bam, qname)
+  ## extract base at reference position
+  base_info1 <- extract_base_at_refpos(parsed_read, ref_pos1, ref_class1, 
+                                           ref_alt1, ref_ref1)
+  base_info2 <- extract_base_at_refpos(parsed_read, ref_pos2, ref_class2, 
+                                           ref_alt2, ref_ref2)
+  ## assign final status to read
+  if(is.na(base_info1$base)|is.na(base_info2$base)){
+    final_assignment <- "skipped"
+  } else {
+    mut1_in_read <- evaluate_base(base_info1, ref_alt1, ref_ref1)
+    mut2_in_read <- evaluate_base(base_info2, ref_alt2, ref_ref2)
     final_assignment <- case_when(
       sum(mut1_in_read, mut2_in_read)==2 ~ "both",
       sum(mut1_in_read, mut2_in_read)==0 ~ "none",
-      sum(mut1_in_read, mut2_in_read)<(-5) ~ "spanned_out",
+      #sum(mut1_in_read, mut2_in_read)<(-5) ~ "spanned_out",
       mut1_in_read==1 ~ "mut1",
       mut2_in_read==1 ~ "mut2",
       TRUE ~ "dev_var"
-    ) 
-  } else {
-    ## non valid chromosomes of both reads
-    return(NULL)
+    )    
   }
-  return(c(qname=qname, result=final_assignment, 
-           origin=unique(paired_reads$origin)))
-}
-#' @keywords internal
-#' description follows
-#' @importFrom dplyr between
-check_af <- function(af){
-  num_af <- as.numeric(af)
-  if(is.na(num_af)){
-    stop("input allele frequency (af) is not numeric")
-  } else if(!between(num_af, 0, 1)){
-    stop("input allele frequency (af) must be between 0 and 1")
-  } else {
-    return(num_af)
-  }
-}
-#' @keywords internal
-#' description follows
-check_tcn <- function(tcn){
-  num_tcn <- as.numeric(tcn)
-  if(is.na(num_tcn)){
-    stop("input total copynumber (tcn) is not numeric")
-  } else {
-    return(num_tcn)
-  }
-}
-#' @keywords internal
-check_chr <- function(chr){
-  if(chr %in% allowed_inputs("chrom_names")){
-    return(as.character(chr))
-  } else {
-    stop("input chromosome (chr) must be either a number between ",
-          "1 and 23 or X or Y, or in the chr1 format")
-  }
+  return(c(qname=qname, result=final_assignment,
+           origin=unique(parsed_read$origin),
+           baseq1=base_info1$qual,
+           mapq1=base_info1$mapq,
+           baseq2=base_info2$qual,
+           mapq2=base_info2$mapq
+           )
+         )
 }
 #' calculates how many copies are affected by a germnline small variant
 #'
@@ -754,138 +949,6 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
 }
 #' @keywords internal
 #' description follows
-#' @importFrom stringr %>% str_detect
-#' @importFrom GenomicRanges elementMetadata elementMetadata<- seqnames
-#' @importFrom methods is
-check_somCna <- function(somCna, geneModel, sex, ploidy,
-                         assumeSomCnaGaps, colnameTcn, 
-                         colnameCnaType){
-  . <- NULL
-  ## check if class is GRanges
-  # if(!is(somCna, "GRanges")){
-  #   stop(
-  #     "input somCna must be a GRanges object; given input appears to be: ", 
-  #     class(somCna))
-  # } else if(
-  #   !(
-  #     (
-  #       #"tcn" %in% names(elementMetadata(somCna))|
-  #      any(allowed_inputs("colnames_tcn") %in% nm_md(somCna))|
-  #      !is.null(colnameTcn)
-  #      )&
-  #     (
-  #      # "cna_type" %in% names(elementMetadata(somCna))|
-  #       any(allowed_inputs("colnames_cna_type") %in% nm_md(somCna))|
-  #      !is.null(colnameCnaType)
-  #      )
-  #   )
-  #   ){
-  #   stop("input somCna requires the following metadata columns: \'tcn\'",
-  #            "and \'cna_type\'",
-  #            "please rename relevant metadata or provide metadata colname by",
-  #            "colnameTcn or colnameCnaType")
-  #} else {
-  somCna <- general_gr_checks(somCna, "scna", "somCna")
-  
-    # if(!is.null(colnameTcn)){
-    #   somCna$tcn <- elementMetadata(somCna)[,colnameTcn]
-    # }
-    # if(!is.null(colnameTcn)){
-    #   somCna$cna_type <- elementMetadata(somCna)[,colnameCnaType]
-    # }
-    somCna$tcn_assumed <- FALSE
-    if(sum(is.na(elementMetadata(somCna)[,"cna_type"]))>0){
-      warning("cna_type column of input somCna contains", 
-              sum(is.na(elementMetadata(somCna)[,"cna_type"])),
-              "NA values;\n  they will be taken as hetero-zygous",
-              "/hemizygous for gonosomes in male samples\n")
-      elementMetadata(somCna)[,"cna_type"][
-        which(
-          is.na(elementMetadata(somCna)[,"cna_type"]))] <- NA
-    } 
-    if(sex=="male"&str_detect(
-      paste(as.character(seqnames(somCna)), collapse=" "), "X|Y")){
-      ## if true, the sample is male and has Gonosomal regions
-      somCna[which(
-        as.character(seqnames(somCna)) %in% c("X", "Y"))]$cna_type <-
-        paste0(
-          somCna[which(
-            as.character(seqnames(somCna)) %in% c("X", "Y"))]$cna_type,
-              ";LOH")
-    }
-    if(assumeSomCnaGaps==TRUE){
-      if(sum(is.na(elementMetadata(somCna)[,"tcn"]))>0){
-        warning("tcn column of input somCna contains", 
-                      sum(
-                        is.na(elementMetadata(somCna)[,"tcn"])),
-                      "NA values;\n  they will be taken as ground ploidy:") 
-        elementMetadata(somCna)[,"tcn_assumed"][
-          which(is.na(elementMetadata(somCna)[,"tcn"]))] <- TRUE
-        elementMetadata(somCna)[,"tcn"][
-          which(is.na(elementMetadata(somCna)[,"tcn"]))] <- 
-          ploidy
-      }
-      new_somCna <- insert_missing_cnv_regions(somCna, geneModel, 
-                                               sex, ploidy)
-    } else {
-      if(sum(is.na(elementMetadata(somCna)[,"tcn"]))>0){
-        warning("tcn column of input somCna contains", 
-                      sum(
-                        is.na(elementMetadata(somCna)[,"tcn"])),
-                      "NA values;\n  they will be excluded from the analysis.",
-                      "Use assumeSomCnaGaps=TRUE to take ground ploidy",
-                      "(ploidy) as tcn"
-                    )
-        new_somCna <- somCna[which(!is.na(
-          elementMetadata(somCna)[,"tcn"]))]
-      } else {
-        new_somCna <- somCna
-      }
-      
-    }
-    return(new_somCna)
-  #}
-}
-#' @keywords internal
-#' description follows
-#' @importFrom GenomicRanges elementMetadata
-nm_md <- function(obj){
-  return(names(elementMetadata(obj)))
-}
-#' @keywords internal
-#' description follows
-check_name_presence <- function(obj, type){
-  if(type=="scna"){
-    if(
-      any(allowed_inputs("colnames_tcn") %in% nm_md(obj))&
-      (any(allowed_inputs("colnames_cna_type") %in% nm_md(obj))|
-       "LOH" %in% nm_md(obj))
-    ){ 
-      return(TRUE)
-    } else {
-      return(FALSE)
-    } 
-  } else {
-    if(
-      (  
-        any(allowed_inputs("colnames_gene") %in% nm_md(obj))&
-        (type=="gene_model"|
-         (
-           any(allowed_inputs("colnames_af") %in% nm_md(obj))&
-           any(allowed_inputs("colnames_ref") %in% nm_md(obj))&
-           any(allowed_inputs("colnames_alt") %in% nm_md(obj))
-         )
-        )
-      )
-    ){
-      return(TRUE)
-    } else {
-      return(FALSE)
-    }    
-  }
-}
-#' @keywords internal
-#' description follows
 #' @importFrom stringr str_match
 #' @importFrom GenomicRanges elementMetadata elementMetadata<-
 assign_correct_colnames <- function(obj, type){
@@ -936,148 +999,6 @@ assign_correct_colnames <- function(obj, type){
   }
 
   return(obj)
-}
-
-general_gr_checks <- function(obj, type, lab){
-  if(!is(obj, "GRanges")){
-    stop("input ", lab, " must be a GRanges object;",
-         "given input appears to be:", 
-         class(obj))
-  } else if(!check_name_presence(obj, type)){
-    if(type=="scna"){
-      stop(
-        "input somCna requires the following metadata columns: ",
-        "\'tcn\' and \'cna_type\'")
-    } else if(type=="small_vars"){
-      stop("input ", lab, " requires the following metadata columns:",
-           "\'gene\'/\'GENE\', \'ref\'/\'REF\',",
-           " \'alt\'/\'ALT\' and \'af\'/\'AF\'")      
-    } else {
-      stop(
-        "input geneModel requires the following metadata columns: ",
-        "\'gene\'/\'GENE\'")
-    }
-  } else {
-    return(assign_correct_colnames(obj, type))
-  }
-}
-
-#' @keywords internal
-#' description follows
-check_gr_gene_model <- function(geneModel, is_pre_eval){
-  . <- NULL
-  if(is_pre_eval==TRUE){
-    if(is.null(geneModel)){
-      return(NULL)
-    } else {
-      return(general_gr_checks(geneModel, "gene_model", "geneModel"))
-    }
-  } else if(is.null(geneModel)){
-    stop("input geneModel must not be NULL")
-  } else {
-    return(general_gr_checks(geneModel, "gene_model", "geneModel"))
-  }
-}
-#' @keywords internal
-#' description follows
-check_gr_small_vars <- function(obj, origin){
-  . <- NULL
-  lab <- ifelse(origin=="somatic",
-                 "somSmallVars",
-                 "germSmallVars")
-  if(is.null(obj)){
-    warning("Input ", lab, " empty/does not contain variants. ",
-            "Assuming there are no ", origin, " small variants")
-    return(NULL)
-  } else if(length(obj)==0){
-    warning("Input ", lab, " empty/does not contain variants. ",
-            "Assuming there are no ", origin, " small variants")
-    return(NULL)
-  } else {
-    return(general_gr_checks(obj, "small_vars", lab))
-  }
-}
-#' @keywords internal
-#' description follows 
-#' @importFrom dplyr between
-check_purity <- function(purity){
-  if(is.na(as.numeric(purity))){
-    stop("input purity must be numeric or a character that can",
-            "be converted to numeric;\n  ", purity, 
-            "can not be converted to numeric")
-  } else if(!between(as.numeric(purity), 0, 1)){
-    stop("input purity must be a numeric value between 0 and 1")
-  } else {
-    return(as.numeric(purity))
-  }
-}
-#' @keywords internal
-#' description follows
-check_ploidy <- function(ploidy){
-  if(is.null(ploidy)){
-    return(NULL)
-  } else {
-    if(is.na(as.numeric(ploidy))){
-      stop("input ploidy/c_normal must be numeric or a character that can",
-              "be converted to numeric;\n  ", ploidy, 
-              "can not be converted to numeric")
-    } else {
-      return(as.numeric(ploidy))
-    }
-  }
-}
-#' @keywords internal
-#' description follows
-#' @importFrom stringr str_detect
-check_sex <- function(sex){
-  . <- NULL
-  allowed_sex <- c("male", "m", "female", "f") %>% c(.,toupper(.))
-  if(!sex %in% allowed_sex){
-    allowed_sex_to_print <- paste(allowed_sex, collapse = "\', \'") %>% 
-              paste0("\'", ., "\'")
-    stop("input sex must be one of ", allowed_sex_to_print)
-  } else {
-    sex <- tolower(sex)
-    if(str_detect(sex, "f")){
-      return("female")
-    } else {
-      return("male")
-    }
-  }
-}
-#' @keywords internal
-#' description follows 
-check_bam <- function(bamDna){
-  if(file.exists(bamDna)){
-    return(bamDna)
-  } else {
-    stop("input bamDna does not exist")
-  }
-}
-#' @keywords internal
-#' description follows
-check_vcf <- function(vcf){
-  if(is.null(vcf)){
-    return(NULL)
-  } else if(sum(unlist(lapply(vcf, file.exists)))==length(vcf)){
-    return(vcf)
-  } else {
-    stop("input vcf does not exist")
-  }
-}
-#' @keywords internal
-#' description follows
-check_rna <- function(bamRna){
-  if(is.null(bamRna)){
-    message("no RNA file provided: Analysis will be done without RNA reads")
-    return(NULL)
-  } else if(file.exists(bamRna)){
-    return(bamRna)   
-  } else {
-    warning("input bamRna does not exist:", bamRna,
-                  "\nanalysis will be done without RNA reads\n")
-    return(NULL)
-  }
 }
 #' @keywords internal
 #' description follows
@@ -1148,6 +1069,14 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
   }
   return(c(dna_bam, rna_bam))
 }
+ascii_to_dec <- function(ascii_encoded){
+  ## apply statistics
+  #ascii_encoded <- str_sub(qual_string, start=1, end=1)
+  exp <- (as.integer(charToRaw(ascii_encoded))-33)/(-10)
+  # Convert the QUAL string to raw hexadecimal
+  return(10^exp)
+}
+
 #' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom dplyr tibble 
@@ -1188,7 +1117,13 @@ classify_reads <- function(line, bamDna, bamRna, verbose){
                                ref_class1,
                                ref_class2,
                                verbose) %>%
-      bind_rows()
+      bind_rows() #%>%
+    #  rowwise() %>%
+    #  mutate(baseq1_conv=ascii_to_dec(baseq1),
+    #         baseq2_conv=ascii_to_dec(baseq2))
+    
+    
+    
   } else {
     #vm("no reads detected, return empty df", verbose)
     classified_reads <- tibble()
@@ -1396,7 +1331,7 @@ perform_level_2_phasing <- function(df_gene, vcf, haploBlocks, phasedVcf,
       } else {
         phased_snps_in_haploblock_ids <- phased_snps_in_haploblock %>%
           mutate(snp_id=paste0("s", c(1:nrow(.))))
-        if(file.exists(geneDir)){
+        if(!is.null(geneDir)){
           write_tsv(phased_snps_in_haploblock_ids, 
                     file=file.path(geneDir, 
                                    paste0("all_snps_hb_", 
@@ -1422,7 +1357,7 @@ perform_level_2_phasing <- function(df_gene, vcf, haploBlocks, phasedVcf,
           mutate(comb_id=paste(mut_id, snp_id, sep="-"))
         
         #print(df_dist)
-        if(file.exists(geneDir)){
+        if(!is.null(geneDir)){
           write_tsv(df_dist, 
                   file=file.path(geneDir, 
                                  paste0("full_dist_df_hb_", 
@@ -1508,7 +1443,7 @@ perform_level_2_phasing <- function(df_gene, vcf, haploBlocks, phasedVcf,
           #print(phased_per_mut)
           if(nrow(phased_per_mut)>0){
              #print(phased_per_mut_full)
-            if(file.exists(geneDir)){
+            if(!is.null(geneDir)){
                 log_phasing_results <- bind_rows(lapply(phased_per_mut_full, nth, 2))
                 write_tsv(log_phasing_results, 
                           file=file.path(geneDir, 
@@ -1686,10 +1621,10 @@ select_status <- function(status_direct, status_indirect){
 #' @importFrom dplyr mutate nth select filter bind_rows
 phase <- function(df_gene, bamDna, bamRna, 
                   showReadDetail, purity, vcf, haploBlocks, phasedVcf,
-                  distCutOff, printLog, verbose, logDir="/home/m168r/home_extension/ZP_revision/test_sample"){
+                  distCutOff, printLog, verbose, logDir){
   pos1 <- pos2 <- mut_id1 <- mut_id2 <- qname.first <- result <- . <- origin <- 
-    qname <- mut_id <- nreads <- status <- NULL
-  if(file.exists(logDir)){
+    qname <- mut_id <- nreads <- status <- geneDir <- NULL
+  if(!is.null(logDir)){
     geneDir <- file.path(logDir, unique(df_gene$gene))
     dir.create(geneDir)
   }
@@ -1760,7 +1695,7 @@ phase <- function(df_gene, bamDna, bamRna,
     merged_comb_full,
     direct_mut_phasing
   )
-  if(file.exists(geneDir)){
+  if(!is.null(geneDir)){
     write_tsv(lapply(direct_mut_phasing, nth, 1) %>% bind_rows(), 
               file=file.path(geneDir, "direct_phasing.tsv"))
   }
@@ -1897,7 +1832,7 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
                                       bamRna, showReadDetail,
                                       printLog, purity, vcf, haploBlocks,
                                       phasedVcf, distCutOff, 
-                                      verbose){
+                                      verbose, logDir){
   if(printLog==TRUE){
     message(GENE)
   }
@@ -1967,7 +1902,7 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
       ## second one indirect phasing combinations
       full_phasing_result <- phase(df_gene, bamDna, bamRna, showReadDetail,
                         purity, vcf, haploBlocks, phasedVcf,
-                        distCutOff, printLog, verbose)
+                        distCutOff, printLog, verbose, logDir)
       vm("full phasing done", verbose)
       all_comb <- full_phasing_result[[1]] %>%
         mutate(gene=GENE)
@@ -2432,7 +2367,8 @@ predict_zygosity <- function(purity,
                              haploBlocks=NULL,
                              phasedVcf=NULL,
                              distCutOff=5000,
-                             verbose=FALSE
+                             verbose=FALSE,
+                             logDir=NULL
                              ){
   status <- info <- wt_cp <- . <- df_homdels <- df_all_mutations <- gene <-
     final_phasing_info <- combined_read_details <-  final_output <-
@@ -2460,6 +2396,7 @@ predict_zygosity <- function(purity,
     if(!nrow(df_all_mutations)==0){
       bamDna <- check_bam(bamDna)
       bamRna <- check_rna(bamRna)
+      logDir <- check_logDir(logDir)
       vcf <- check_vcf(vcf) 
       haploBlocks <- check_haploblocks(haploBlocks)
       #vm("initializing evaluation per gene", verbose)
@@ -2476,7 +2413,8 @@ predict_zygosity <- function(purity,
         haploBlocks,
         phasedVcf,
         distCutOff, 
-        verbose)
+        verbose,
+        logDir)
       #print(result_list)
       pre_scoring <- lapply(result_list, nth, n=1) %>% 
         bind_rows()
