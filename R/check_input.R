@@ -323,9 +323,13 @@ check_rna <- function(bamRna){
   }
 }
 check_haploblocks <- function(haploBlocks){
-  haploBlocks <- general_gr_checks(haploBlocks, "haploBlocks", "haploBlocks")
-  haploBlocks$hap_id <- seq(1, length(haploBlocks))
-  return(haploBlocks)
+  if(is.null(haploBlocks)){
+    return(NULL)
+  } else {
+    haploBlocks <- general_gr_checks(haploBlocks, "haploBlocks", "haploBlocks")
+    haploBlocks$hap_id <- seq(1, length(haploBlocks))
+    return(haploBlocks)    
+  }
 }
 
 #' @keywords internal

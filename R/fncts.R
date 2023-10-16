@@ -158,23 +158,29 @@ pre_scoring <- function(tcn1, tcn2, status, aff_copies1, aff_copies2){
 #' @importFrom purrr set_names
 classify_combination <- function(classified_reads, purity, eval_full, printLog,
                                  tcn1, tcn2, aff_copies1, 
-                                 aff_copies2){
+                                 aff_copies2, verbose=NULL){
   result <- . <- fac <- NULL
+  vm("classifying", verbose)
   if(nrow(classified_reads)==0){
+    vm("not sure if this can happen?", verbose)
     return(rep(0, 7) %>% t() %>% as.data.frame() %>% 
              set_names(c("both", "none", "mut1", "mut2", "dev_var", 
                          "no_overlap", "none_raw")) %>% 
              mutate(status="null"))
   }
-  number <- classified_reads %>%
+  #vm(unique(classified_reads$result), verbose)
+  number_pre <- classified_reads %>%
     mutate(fac=factor(result, levels = c('both', 'mut1', 'mut2', 'none', 
                                          "dev_var", 'read_in_read', 
-                                         'spanned_out'))) %>%
+                                         'skipped'))) %>%
     group_by(fac, .drop = FALSE) %>%
-    tally() %>% 
+    tally()
+  #vm(number_pre, verbose)
+  number <- number_pre%>% 
     column_to_rownames(var='fac') %>%
     t() %>%
     as_tibble()
+  vm("numbers extracted", verbose)
   both <- number[['both']]
   mut1 <- number[['mut1']]
   mut2 <- number[['mut2']]
@@ -240,6 +246,7 @@ classify_combination <- function(classified_reads, purity, eval_full, printLog,
     status <- "diff"
     status_def_info <- "variants found only on different reads -> diff"
   }
+  vm("creating final tibble", verbose)
   ntabs <- ifelse(eval_full==TRUE, 3, 7)
   catt(printLog, ntabs, status_def_info)
   status_table <- tibble(
@@ -249,11 +256,12 @@ classify_combination <- function(classified_reads, purity, eval_full, printLog,
     mut2=mut2,
     dev_var=number[['dev_var']],
     no_overlap=sum(as.numeric(number[['read_in_read']]), 
-                   as.numeric(number[['spanned_out']])),
+                   as.numeric(number[['skipped']])),
     status=status,
     none_raw=none_raw
     )
   if(eval_full==TRUE){
+    vm("full evaluation requested", verbose)
     psc <- pre_scoring(tcn1, tcn2, status, aff_copies1, aff_copies2)
     if(status=="diff"&psc$pre_score==1&round(psc$mtcn)<=2){
       catt(printLog, 3, 
@@ -659,7 +667,7 @@ core_tool <- function(qname, bam,
     final_assignment <- case_when(
       sum(mut1_in_read, mut2_in_read)==2 ~ "both",
       sum(mut1_in_read, mut2_in_read)==0 ~ "none",
-      #sum(mut1_in_read, mut2_in_read)<(-5) ~ "spanned_out",
+      #sum(mut1_in_read, mut2_in_read)<(-5) ~ "skipped",
       mut1_in_read==1 ~ "mut1",
       mut2_in_read==1 ~ "mut2",
       TRUE ~ "dev_var"
@@ -1122,7 +1130,7 @@ classify_reads <- function(line, bamDna, bamRna, verbose){
     #  mutate(baseq1_conv=ascii_to_dec(baseq1),
     #         baseq2_conv=ascii_to_dec(baseq2))
     
-    
+    vm("reads classified", verbose)
     
   } else {
     #vm("no reads detected, return empty df", verbose)
@@ -1533,6 +1541,7 @@ perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity,
       } else {
         full_read_info <- NULL
       }
+      vm("defining result for combination", verbose)
       RESULT <- classify_combination(main_classified_reads,
                                      purity,
                                      eval_full = TRUE, 
@@ -1540,7 +1549,8 @@ perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity,
                                      main_comb[['tcn1']],
                                      main_comb[['tcn2']],
                                      main_comb[['aff_cp1']],
-                                     main_comb[['aff_cp2']]
+                                     main_comb[['aff_cp2']],
+                                     verbose
       ) %>%  
         mutate(
           DNA_rds=nrow(main_classified_reads %>% filter(origin=="DNA")),
@@ -1577,9 +1587,11 @@ perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity,
     # }
     # catt(printLog, 3, ext_snp_info)
     if(return_null_result==TRUE){
+      vm("result is null", verbose)
       RESULT <- return_null_result(main_comb, bamRna, "test")
       full_read_info <- NULL
     }
+    vm("returning result", verbose)
     return(list(assigned=RESULT, detailed=full_read_info, 
                 #snp_phasing=ext_snp_phasing, 
                 level_2_phasing=level_2_phasing))
