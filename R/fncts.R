@@ -158,7 +158,7 @@ pre_scoring <- function(tcn1, tcn2, status, aff_copies1, aff_copies2){
 #' @importFrom purrr set_names
 classify_combination <- function(classified_reads, purity, eval_full, printLog,
                                  tcn1, tcn2, aff_copies1, 
-                                 aff_copies2, verbose=NULL){
+                                 aff_copies2, verbose=FALSE){
   result <- . <- fac <- NULL
   vm("classifying", verbose)
   if(nrow(classified_reads)==0){
@@ -1210,7 +1210,7 @@ get_genotype <- function(gt, status){
 
 loadVcf <- function(phasedVcf, chrom, region_to_load, refGen){
   ## first check which format input vcf has
-  lapply(phasedVcf, function(VCF){
+  gr_list <- lapply(phasedVcf, function(VCF){
     if(is(VCF, "TabixFile")){
       if(chrom %in% seqnamesTabix(VCF)){
         loadedVcf <- 
@@ -1224,19 +1224,26 @@ loadVcf <- function(phasedVcf, chrom, region_to_load, refGen){
       }
     } else {
       if(str_detect(VCF, paste0("chr", chrom, "[^0-9]"))){
-        loadedVcf <- VariantAnnotation::readVcf(vcf_to_load, refGen)
+        loadedVcf <- VariantAnnotation::readVcf(VCF, refGen)
         gt <- VariantAnnotation::geno(loadedVcf)$GT %>% as.character()
-        comb_vcf <-  subsetByOverlaps(rowRanges(loadedVcf), region_to_load)
-        combVcf$gt <- gt
+        rangesVcf <- rowRanges(loadedVcf)
+        rangesVcf$gt <- gt
+        combVcf <-  subsetByOverlaps(rangesVcf, region_to_load)
       } else {
         return(NULL)
       }
     }
     return(combVcf)
   }) %>%
-    compact() %>%
-    c(recursive=TRUE) %>%
+    #%>%
+    Reduce(function(x,y)c(x,y),.) %>%
     return()
+  # print(compact(gr_list))
+  # print(compact(gr_list)) %>%
+  #         c(recursive=TRUE)
+    # compact() %>%
+    # c(recursive=TRUE) %>%
+    # return()
 }
 
 perform_level_2_phasing <- function(df_gene, vcf, haploBlocks, phasedVcf,
@@ -1386,7 +1393,8 @@ perform_level_2_phasing <- function(df_gene, vcf, haploBlocks, phasedVcf,
                   classify_combination(res,
                                        purity,
                                        eval_full=FALSE,
-                                       printLog)
+                                       printLog,
+                                       verbose)
                 #vm("111111111111", verbose)
                 sub_status_list <- bind_rows(sub_status_list,
                                              sub_status_combination %>% 
