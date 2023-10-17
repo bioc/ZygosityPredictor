@@ -1,4 +1,78 @@
 #' @keywords internal
+#' description follows
+#' @importFrom stringr str_match
+#' @importFrom GenomicRanges elementMetadata elementMetadata<-
+assign_correct_colnames <- function(obj, type){
+  . <- NULL
+  if(type=="scna"){
+    col_tcn <- str_match(
+      nm_md(obj), paste(allowed_inputs("colnames_tcn"), collapse="|")) %>%
+      .[which(!is.na(.))]
+    elementMetadata(obj)[,"tcn"] <- 
+      elementMetadata(obj)[,col_tcn]   
+    if("LOH" %in% nm_md(obj)){
+      obj$cna_type <- case_when(obj$LOH==TRUE ~ "LOH",
+                                TRUE ~ "HZ")
+    } else {
+      col_cna_type <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_cna_type"), 
+                          collapse="|")) %>%
+        .[which(!is.na(.))]   
+      elementMetadata(obj)[,"cna_type"] <- 
+        elementMetadata(obj)[,col_cna_type]
+    }
+  } else {
+    col_gene <- str_match(
+      nm_md(obj), 
+      paste(allowed_inputs("colnames_gene"), collapse="|")) %>%
+      .[which(!is.na(.))]
+    elementMetadata(obj)[,"gene"] <- 
+      elementMetadata(obj)[,col_gene]  
+    if(type=="small_vars"){
+      col_af <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_af"), collapse="|")) %>%
+        .[which(!is.na(.))]
+      col_ref <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_ref"), collapse="|")) %>%
+        .[which(!is.na(.))]
+      col_alt <- str_match(
+        nm_md(obj), paste(allowed_inputs("colnames_alt"), collapse="|")) %>%
+        .[which(!is.na(.))]
+      elementMetadata(obj)[,"af"] <- 
+        elementMetadata(obj)[,col_af]
+      elementMetadata(obj)[,"ref"] <- 
+        elementMetadata(obj)[,col_ref]
+      elementMetadata(obj)[,"alt"] <- 
+        elementMetadata(obj)[,col_alt]
+      elementMetadata(obj)["mid"] <- 
+        seq_len(length(obj))    
+    }    
+  }
+  
+  return(obj)
+}
+#' @keywords internal
+check_opt_assgap <- function(assumeSomCnaGaps, ploidy){
+  if(assumeSomCnaGaps==TRUE&is.null(ploidy)){
+    warning("somatic CNA gaps can only be assumed if input ploidy is",
+            "provided. Provide ploidy=2 to assume diploid case")
+    return(FALSE)
+  } else {
+    return(assumeSomCnaGaps)
+  }
+}
+#' @keywords internal
+check_opt_incdel <- function(includeIncompleteDel, ploidy){
+  if(includeIncompleteDel==TRUE&is.null(ploidy)){
+    warning("Large scale deletions cannot be included without ploidy",
+            "Please provide input ploidy. Provide ploidy=2",
+            "to assume diploid case")
+    return(FALSE)
+  } else {
+    return(includeIncompleteDel)
+  }
+}
+#' @keywords internal
 #' returns names of metadata columns from GRanges object
 #' @importFrom GenomicRanges elementMetadata
 nm_md <- function(obj){

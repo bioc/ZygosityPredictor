@@ -13,6 +13,7 @@ catt <- function(printLog, level, text){
 #' @importFrom dplyr tibble
 prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2, 
                                  verbose=FALSE){
+  vm("function: prepare_raw_bam_file", verbose)
   qname.first <- . <- NULL
   ## importFrom dplyr tibble filter
   ref_pos1 <- as.numeric(pos1)
@@ -39,7 +40,7 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
       what=c("qname","seq", "cigar", "mapq", "qual")
     )) 
   if(length(all_covering_read_pairs)==0){
-    return(tibble())
+    filtered_reads <- tibble()
   } else {
     ## combine all ranges and check for ref_pos2
     all_reads <- c(
@@ -58,8 +59,10 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
     filtered_reads <- all_reads[
       which(all_reads$qname %in% shared_read_pairs)
     ]
-    return(filtered_reads)
+    
   }
+  vm("  - done", verbose)
+  return(filtered_reads)
 }
 #' @keywords internal
 #' @importFrom stringr %>%
@@ -682,65 +685,6 @@ core_tool <- function(qname, bam,
            )
          )
 }
-#' calculates how many copies are affected by a germnline small variant
-#'
-#' @param af Allele-frequency of the variant (numeric value between 0 and 1)
-#' @param tcn total-copynumber at position of the variant (numeric value >0)
-#' @param purity purity of the sample (numeric value between 0 and 1 indicating 
-#' the fraction of relevant sample with control/unrelevant tissue)
-#' @param chr chromosome of the variant (either format 1,2,..,X,Y or 
-#' chr1,..,chrX)
-#' @param sex sex of the sample (character: "male", "female", "m", "f")
-#' @param c_normal expected copy number at position of the variant in normal 
-#' tissue, 1 for gonosomes in male samples, and 2 for male autosomes and all 
-#' chromosomes in female samples. (The function can also assess the c_normal 
-#' parameter by itself, but then the following two inputs must be provided: 
-#' chr and sex)
-#' @param af_normal Allele-frequency in normal tissue (numeric value between 0 
-#' and 1) 0.5 represents heterozygous variants in diploid genome, 
-#' 1 would be homozygous. Could be relevant if germline CNVs are present at the 
-#' position. Then also the c_normal parameter would have to be adjusted.
-#' @return A numeric value indicating the affecting copies for the variant
-#' @export
-#' @examples 
-#' library(dplyr)
-#' library(purrr)
-#' library(stringr)
-#' aff_germ_copies(af=0.67, tcn=2, purity=0.9, chr="chrX", sex="female")
-aff_germ_copies <- function(chr, af, tcn, purity, sex, 
-                            c_normal=NULL, af_normal=0.5){
-  cv <- formula_checks(chr, af, tcn, purity, sex, c_normal, af_normal)
-  aff_cp <- cv$af*cv$tcn+(cv$af-cv$af_normal)*cv$c_normal*((1/cv$purity)-1)
-  return(aff_cp) 
-  # alternative: (af*(purity*tcn+c_normal*(1-purity))-cc*(1-purity))/purity 
-}
-#' calculates how many copies are affected by a somatic small variant
-#'
-#' @param af Allele-frequency of the variant (numeric value between 0 and 1)
-#' @param tcn total-copynumber at position of the variant (numeric value >0)
-#' @param purity purity of the sample (numeric value between 0 and 1 indicating 
-#' the fraction of relevant sample with control/unrelevant tissue)
-#' @param chr chromosome of the variant (either format 1,2,..,X,Y or 
-#' chr1,..,chrX)
-#' @param sex sex of the sample (character: "male", "female", "m", "f")
-#' @param c_normal expected copy number at the position of the variant in 
-#' normal tissue, 1 for gonosomes in male samples, and 2 for male autosomes and 
-#' all chromosomes in female samples. (The function can also assess the 
-#' c_normal parameter by itself, but then the following two inputs must be 
-#' provided: chr and sex)
-#' @return A numeric value indicating the affecting copies for the variant
-#' @examples 
-#' library(dplyr)
-#' library(purrr)
-#' library(stringr)
-#' aff_som_copies(chr="chrX", af=0.67, tcn=2, purity=0.9, sex="female")
-#' @export
-aff_som_copies <- function(chr, af, tcn, purity, sex, c_normal=NULL){
-  cv <- formula_checks(chr, af, tcn, purity, sex, c_normal)
-  aff_cp <- cv$af*(cv$tcn+cv$c_normal*((1/cv$purity)-1))
-  return(aff_cp)
-  ## alternative: aff_cp = af*(tcn+c_normal/purity-c_normal)
-}
 #' @keywords internal
 #' description follows
 formula_checks <- function(chr, af, tcn, purity, sex, c_normal, af_normal=0.5){
@@ -957,59 +901,6 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
 }
 #' @keywords internal
 #' description follows
-#' @importFrom stringr str_match
-#' @importFrom GenomicRanges elementMetadata elementMetadata<-
-assign_correct_colnames <- function(obj, type){
-  . <- NULL
-  if(type=="scna"){
-    col_tcn <- str_match(
-      nm_md(obj), paste(allowed_inputs("colnames_tcn"), collapse="|")) %>%
-      .[which(!is.na(.))]
-    elementMetadata(obj)[,"tcn"] <- 
-      elementMetadata(obj)[,col_tcn]   
-    if("LOH" %in% nm_md(obj)){
-      obj$cna_type <- case_when(obj$LOH==TRUE ~ "LOH",
-                                    TRUE ~ "HZ")
-    } else {
-      col_cna_type <- str_match(
-        nm_md(obj), paste(allowed_inputs("colnames_cna_type"), 
-                          collapse="|")) %>%
-        .[which(!is.na(.))]   
-      elementMetadata(obj)[,"cna_type"] <- 
-        elementMetadata(obj)[,col_cna_type]
-    }
-  } else {
-    col_gene <- str_match(
-      nm_md(obj), 
-      paste(allowed_inputs("colnames_gene"), collapse="|")) %>%
-      .[which(!is.na(.))]
-    elementMetadata(obj)[,"gene"] <- 
-      elementMetadata(obj)[,col_gene]  
-    if(type=="small_vars"){
-      col_af <- str_match(
-        nm_md(obj), paste(allowed_inputs("colnames_af"), collapse="|")) %>%
-        .[which(!is.na(.))]
-      col_ref <- str_match(
-        nm_md(obj), paste(allowed_inputs("colnames_ref"), collapse="|")) %>%
-        .[which(!is.na(.))]
-      col_alt <- str_match(
-        nm_md(obj), paste(allowed_inputs("colnames_alt"), collapse="|")) %>%
-        .[which(!is.na(.))]
-      elementMetadata(obj)[,"af"] <- 
-        elementMetadata(obj)[,col_af]
-      elementMetadata(obj)[,"ref"] <- 
-        elementMetadata(obj)[,col_ref]
-      elementMetadata(obj)[,"alt"] <- 
-        elementMetadata(obj)[,col_alt]
-      elementMetadata(obj)["mid"] <- 
-        seq_len(length(obj))    
-    }    
-  }
-
-  return(obj)
-}
-#' @keywords internal
-#' description follows
 #' @importFrom stringr str_split
 #' @importFrom purrr map_chr set_names
 make_phasing_combinations <- function(df_mut_to_combine){
@@ -1158,18 +1049,6 @@ check_read_presence <- function(sub_comb, bamDna, bamRna){
   rl <- list(rt=res_tibble, bam=bam)
   return(rl)
 }
-#' @keywords internal
-#' @importFrom igraph graph_from_data_frame shortest_paths
-find_path <- function(connections, mut_id1, mut_id2) {
-  graph <- graph_from_data_frame(connections, directed = FALSE)
-  shortest_path <- 
-    shortest_paths(graph, from = mut_id1, to = mut_id2, mode = "all")$vpath
-  if (length(shortest_path) > 0) {
-    return(names(unlist(shortest_path)))
-  } else {
-    return(NULL)
-  }
-}
 
 #' @keywords internal
 #' @importFrom stringr %>%
@@ -1208,9 +1087,11 @@ get_genotype <- function(gt, status){
   } 
 }
 
-loadVcf <- function(phasedVcf, chrom, region_to_load, refGen){
+loadVcf <- function(phasedVcf, chrom, region_to_load, refGen, verbose){
+  vm("function: loadVcf", verbose)
   ## first check which format input vcf has
   gr_list <- lapply(phasedVcf, function(VCF){
+    #vm(class(VCF), verbose)
     if(is(VCF, "TabixFile")){
       if(chrom %in% seqnamesTabix(VCF)){
         loadedVcf <- 
@@ -1224,6 +1105,7 @@ loadVcf <- function(phasedVcf, chrom, region_to_load, refGen){
       }
     } else {
       if(str_detect(VCF, paste0("chr", chrom, "[^0-9]"))){
+        #print("noTabix_det")
         loadedVcf <- VariantAnnotation::readVcf(VCF, refGen)
         gt <- VariantAnnotation::geno(loadedVcf)$GT %>% as.character()
         rangesVcf <- rowRanges(loadedVcf)
@@ -1234,349 +1116,12 @@ loadVcf <- function(phasedVcf, chrom, region_to_load, refGen){
       }
     }
     return(combVcf)
-  }) %>%
-    #%>%
-    Reduce(function(x,y)c(x,y),.) %>%
-    return()
-  # print(compact(gr_list))
-  # print(compact(gr_list)) %>%
-  #         c(recursive=TRUE)
-    # compact() %>%
-    # c(recursive=TRUE) %>%
-    # return()
-}
-
-perform_level_2_phasing <- function(df_gene, vcf, haploBlocks, phasedVcf,
-                         bamDna, bamRna, 
-                        purity, snp_dist=10000, distCutOff,
-                        printLog, verbose,
-                        geneDir, refGen){
-  
-  catt(printLog, 4, "Initializing level 2 phasing")
-  #print(paste("GENE:", unique(df_gene$gene)))
-  ## annotate to df_gene in which haploblock the variant is located, 0 means no 
-  ## haploblock
-
-  
-  df_gene_hap <- apply(df_gene, 1, function(mut){
-    gr_roi <- GenomicRanges::GRanges(paste0(mut[["chr"]], ":", 
-                                              as.numeric(mut[["pos"]]), "-",
-                                                as.numeric(mut[["pos"]])))
-    #print(gr_roi)
-    #print(haploBlocks)
-    hap <- IRanges::subsetByOverlaps(haploBlocks, gr_roi)
-    if(length(hap)==0){
-      det_hap_id <- 0
-    } else {
-      det_hap_id <- hap$hap_id
-      #print(mut)
-      #print(hap)
-    }
-    return(as_tibble(t(mut)) %>% mutate(hap_id=det_hap_id))
-  }) %>% bind_rows()
-  
-  #print(df_gene_hap)
-  ## check if at least two variants are in the same haploblock
-  if(any(df_gene_hap$hap_id > 0)&any(table(
-    df_gene_hap[which(df_gene_hap$hap_id>0),]$hap_id
-    )>1)){
-    vm("at least two variants detected in same haploblock", verbose)
-    #write_tsv(df_gene_hap, file=file.path("/home/m168r/home_extension/ZP_revision", paste0(unique(df_gene$gene), ".tsv")))
-    relevant_haploblocks <- table(df_gene_hap$hap_id) %>% .[which(.>1)] %>% names() %>% .[which(!.=="0")]
-    #print("relevant haploblocks")
-    #print(relevant_haploblocks)
-    ## iterate over haploblocks
-    per_haploblock <- lapply(relevant_haploblocks, function(HAP_ID){
-      #print(haploBlocks)
-      #print(HAP_ID)
-      region_to_load <- haploBlocks[which(haploBlocks$hap_id==HAP_ID)]
-      
-      # vcf_to_load <- phasedVcf %>% .[which(str_detect(., paste0("chr",unique(df_gene$chr), ".vcf")))]
-      # #print(region_to_load)
-      # #print("loading vcf")
-      # #print(vcf_to_load)
-      # vcf_region <- 
-      #   VariantAnnotation::readVcf(vcf_to_load, "hg19")
-      # 
-      # #print("vcf loaded")
-      # gt <- VariantAnnotation::geno(vcf_region)$GT %>% as.character()
-      # comb_vcf <- rowRanges(vcf_region)
-      # comb_vcf$gt <- gt
-      # 
-      # #print(comb_vcf)
-      # #print(region_to_load)
-      # 
-       phased_snps_in_haploblock <- loadVcf(phasedVcf, unique(df_gene$chr), 
-                                            region_to_load, refGen) %>%
-        as_tibble() %>%
-        filter(str_detect(gt, "\\|")) %>%
-        filter(!gt=="1|1") 
-      
-      if(nrow(phased_snps_in_haploblock)==0){
-        vm("no phased snps/heterozygous SNPS in haploblock", verbose)
-        return(NULL)
-      } else {
-        phased_snps_in_haploblock_ids <- phased_snps_in_haploblock %>%
-          mutate(snp_id=paste0("s", c(1:nrow(.))))
-        if(!is.null(geneDir)){
-          write_tsv(phased_snps_in_haploblock_ids, 
-                    file=file.path(geneDir, 
-                                   paste0("all_snps_hb_", 
-                                          HAP_ID, ".tsv")))
-        }
-        #print(phased_snps_in_haploblock)
-        
-        ## get every mutation located in the haploblock
-        muts_in_hap <- df_gene_hap %>%
-          filter(hap_id==HAP_ID)
-        
-        ## calculate distance of each snp to each variant
-        df_dist <- apply(muts_in_hap, 1, function(mut){
-          
-          phased_snps_in_haploblock_ids %>%
-            mutate(dist=abs(start-as.numeric(mut[["pos"]])),
-                   mut_id=mut[["mut_id"]]) %>%
-            return()
-          
-        }) %>% bind_rows() %>%
-          filter(dist<distCutOff) %>%
-          arrange(dist) %>%
-          mutate(comb_id=paste(mut_id, snp_id, sep="-"))
-        
-        #print(df_dist)
-        if(!is.null(geneDir)){
-          write_tsv(df_dist, 
-                  file=file.path(geneDir, 
-                                 paste0("full_dist_df_hb_", 
-                                        HAP_ID, ".tsv")))
-        }
-        if(length(unique(df_dist$mut_id))>1){
-          phased_per_mut_full <- lapply(unique(df_dist$mut_id), function(MUT_ID){
-            #message("phasing", MUT_ID)
-            df_dist_mut <- df_dist %>%
-              filter(mut_id==MUT_ID)
-            #print(df_dist_mut)
-            high_conf_result <- FALSE
-            i <- 1
-            phased_muts <- tibble()
-            ## only for documentation
-            sub_status_list <- tibble()
-            while(high_conf_result==FALSE&i<=nrow(df_dist_mut)){
-              cat(i)
-              
-              comb <- df_dist_mut[i,]
-              #print("hier kommt comb")
-              #print(comb)
-              sub_comb <- bind_rows(
-                df_gene %>% 
-                  filter(mut_id==comb$mut_id) %>%
-                  select(chr, pos, mut_id, ref, alt, class),
-                comb %>%
-                  mutate(ALT=unlist(
-                    lapply(ALT, function(x){as.character(x[[1]][1])})),
-                    class="snv") %>%
-                  select(chr=seqnames, pos=start, mut_id=snp_id, ref=REF, alt=ALT, 
-                         class)
-              ) %>%
-                make_phasing_combinations()
-              
-              ## the function classify_reads is usually used inside of apply()
-              ## thats why the input needs to be adjusted in the format of apply iterations:
-              comb_vec <- as.character(sub_comb) %>% set_names(nm=names(sub_comb))
-              
-       
-              
-              res <- classify_reads(comb_vec, bamDna, bamRna, verbose)
-              
-              if(nrow(res)!=0){
-                sub_status_combination <- 
-                  classify_combination(res,
-                                       purity,
-                                       eval_full=FALSE,
-                                       printLog,
-                                       verbose)
-                #vm("111111111111", verbose)
-                sub_status_list <- bind_rows(sub_status_list,
-                                             sub_status_combination %>% 
-                                               mutate(comb_id=comb$comb_id))
-                #print(sub_status_list)
-                #vm("222222221", verbose)
-                if(!sub_status_combination$status=="null"){
-                  phased <- tibble(mut_id=comb$mut_id,
-                                   gt=get_genotype(comb$gt, sub_status_combination$status))
-                  phased_muts <- bind_rows(phased_muts, phased)
-                  
-                  high_conf_result <- TRUE
-                  
-                } 
-                
-              }
-              i <- i +1 
-
-            } 
-
-            
-            return(list(phased_muts, sub_status_list))
-            
-            
-            # if(length(bam_raw)>0){
-            #   write_tsv(tibble(x="hello"), file=file.path("/home/m168r/home_extension/ZP_revision", paste0(unique(df_gene$gene), ".tsv")))
-            # }
-            
-          }) #%>% bind_rows()
-          #vm("333333333", verbose)
-          phased_per_mut <- bind_rows(lapply(phased_per_mut_full, nth, 1))
-          
-          #print("done phasing of variants to snps")
-          #print(phased_per_mut)
-          if(nrow(phased_per_mut)>0){
-             #print(phased_per_mut_full)
-            if(!is.null(geneDir)){
-                log_phasing_results <- bind_rows(lapply(phased_per_mut_full, nth, 2))
-                write_tsv(log_phasing_results, 
-                          file=file.path(geneDir, 
-                                         paste0("phasing_info_hb_", 
-                                                HAP_ID, ".tsv")))
-            }
-            
-            #vm("111111111111", verbose)
-            status_per_comb <- outer(phased_per_mut$mut_id, 
-                                     phased_per_mut$mut_id, `paste`) %>%
-              .[which(upper.tri(.))] %>%
-              as.data.frame() %>% 
-              set_names(nm='raw') %>%
-              mutate(
-                mut_id1=str_split(raw, " ") %>% map_chr(.,1),
-                mut_id2=str_split(raw, " ") %>% map_chr(.,2)
-              ) %>%
-              left_join(phased_per_mut %>% select(mut_id1=mut_id, gt1=gt), 
-                        by="mut_id1") %>%
-              left_join(phased_per_mut %>% select(mut_id2=mut_id, gt2=gt), 
-                        by="mut_id2") %>%
-              rowwise() %>%
-              mutate(status=case_when(gt1==gt2 ~ "same",
-                                      TRUE ~ "diff"),
-                     #comb_id=paste(mut_id1, mut_id2, sep='-')
-                     comb_id=paste(paste0("m",
-                                          sort(as.numeric(str_match(
-                                            c(mut_id1, mut_id2), "\\d+")))),
-                                   collapse = "-")
-                     ) %>%
-              ungroup() %>%
-              select(comb_id, status)  
-          } else {
-            status_per_comb <- NULL
-          }
-         
-          #vm("222222222", verbose)
-          return(status_per_comb)
-          #print(table(phased_per_mut))
-          
-          
-          # if(nrow(phased_per_mut)>1){
-          #   write_tsv(tibble(x="hello"), file=file.path("/home/m168r/home_extension/ZP_revision/gene_out", paste0(unique(df_gene$gene), ".tsv")))
-          # }        
-        } else {
-          vm("only one mut closer than dist limit to snp", verbose)
-          return(NULL)
-        }
-      }
-    })  %>%
-      bind_rows()
-
-    if(nrow(per_haploblock)==0){
-      return(NULL)
-    } else {
-      return(per_haploblock)
-    }
-  } else {
-    #print("no pair of variants located in the same haploblock")
-    return(NULL)
-  }
-}
-
-perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity, 
-                                   verbose, printLog, showReadDetail){
-  final_combinations <-  apply(all_combinations, 1, function(main_comb){
-    
-    catt(printLog, 2 ,c("combination:", main_comb[["comb_id"]]))
-    return_null_result <- TRUE
-    #try_snp_phasing <- TRUE
-    level_2_phasing <- TRUE
-    #man_snp_phasing <- FALSE
-    #ext_snp_phasing <- NULL
-    RESULT <- NULL
-    full_read_info <- NULL
-    #vm("classifying reads for main mutations", verbose)
-    main_classified_reads <- classify_reads(main_comb, bamDna, bamRna, verbose)
-    catt(printLog, 3, 
-         c(nrow(main_classified_reads), 
-           "reads / read-pairs overlapping both positions"))
-    if(nrow(main_classified_reads)!=0){
-      return_null_result <- FALSE
-      if(showReadDetail==TRUE){
-        full_read_info <- main_classified_reads %>%
-          select(qname, result, origin) %>%
-          mutate(comb=main_comb[['comb_id']])
-      } else {
-        full_read_info <- NULL
-      }
-      vm("defining result for combination", verbose)
-      RESULT <- classify_combination(main_classified_reads,
-                                     purity,
-                                     eval_full = TRUE, 
-                                     printLog,
-                                     main_comb[['tcn1']],
-                                     main_comb[['tcn2']],
-                                     main_comb[['aff_cp1']],
-                                     main_comb[['aff_cp2']],
-                                     verbose
-      ) %>%  
-        mutate(
-          DNA_rds=nrow(main_classified_reads %>% filter(origin=="DNA")),
-          RNA_rds=nrow(main_classified_reads %>% filter(origin=="RNA")),
-          dist=as.numeric(main_comb[["dist"]]),
-          class_comb=paste(main_comb[['class1']], main_comb[['class2']], 
-                           sep="-"),
-          comb=main_comb[['comb_id']]
-        ) 
-      if(RESULT$status!="null"){
-        #try_snp_phasing <- FALSE
-        level_2_phasing <- FALSE
-        return_null_result <- FALSE
-        catt(printLog, 3, c("status:", RESULT$status))
-      } else {
-        catt(printLog, 3, "status can not be defined")
-      }
-    }   
-    # if(is.null(vcf)){
-    #   ext_snp_info <- "no vcf provided for extended SNP phasing"
-    # } else if(try_snp_phasing==FALSE){
-    #   ext_snp_info <- ""
-    # } else if(man_snp_phasing==TRUE&as.numeric(main_comb[["dist"]])<distCutOff){
-    #   ext_snp_raw <- perform_extended_snp_phasing(main_comb, vcf,
-    #                                               df_gene, bamDna, bamRna, 
-    #                                               purity, full_read_info, RESULT,
-    #                                               ext_snp_phasing,
-    #                                               printLog, verbose)
-    #   ext_snp_phasing <- ext_snp_raw[["ext_snp_phasing"]]
-    #   ext_snp_info <- ext_snp_raw[["ext_snp_info"]]
-    #   RESULT <-  ext_snp_raw[["RESULT"]]
-    # } else { 
-    #   ext_snp_info <- "muts too far away for SNP phasing"
-    # }
-    # catt(printLog, 3, ext_snp_info)
-    if(return_null_result==TRUE){
-      vm("result is null", verbose)
-      RESULT <- return_null_result(main_comb, bamRna, "test")
-      full_read_info <- NULL
-    }
-    vm("returning result", verbose)
-    return(list(assigned=RESULT, detailed=full_read_info, 
-                #snp_phasing=ext_snp_phasing, 
-                level_2_phasing=level_2_phasing))
-  })
-  return(final_combinations)
+  }) 
+  #print(gr_list)
+  gr_obj <- gr_list %>% compact() %>%
+    Reduce(function(x,y)c(x,y),.) #%>%
+  vm("  - done", verbose)
+  return(gr_obj)
 }
 #' @keywords internal
 #' function to decide if indirect phasing should and can be performed
@@ -1596,10 +1141,10 @@ eval_direct_results <- function(status_per_comb, phasedVcf,
   return(try)
 }
 
-select_status <- function(status_direct, status_indirect){
-  if("diff" %in% c(status_direct, status_indirect)){
+select_status <- function(status_direct, status_haploblock){
+  if("diff" %in% c(status_direct, status_haploblock)){
     return("diff")
-  } else if("same" %in% c(status_direct, status_indirect)){
+  } else if("same" %in% c(status_direct, status_haploblock)){
     return("same")
   } else {
     return("null")
@@ -1624,6 +1169,7 @@ phase <- function(df_gene, bamDna, bamRna,
   #print(df_gene)
   ## (1): define all combinations of variants to be phased
   all_combinations <- make_phasing_combinations(df_gene) 
+  print(names(all_combinations))
   ## (2): perform direct phasing between variants (read-based)
   direct_mut_phasing <- perform_direct_phasing(all_combinations, bamDna, bamRna, 
                                                purity,
@@ -1636,14 +1182,18 @@ phase <- function(df_gene, bamDna, bamRna,
   ## (3): check if indirect phasing can/should be performed
   do_indirect_phasing <- eval_direct_results(status_per_comb, phasedVcf,
                                              haploBlocks)
+  ## to return, some infos of the all_combinations are required, remove not 
+  ## necesarry info from the object
+  all_combinations_export <- all_combinations %>%
+    select(dist, comb_id, comb_id_sorted, tcn1, tcn2, aff_cp1, aff_cp2)
   ## just to pre define... will be overwritten if necesarry
-  merged_comb_indirect <- all_combinations %>%
-    mutate(status_indirect="null")
+  merged_comb_indirect <- all_combinations_export %>%
+    mutate(status_haploblock="null")
   #print(do_indirect_phasing)
   
   if(do_indirect_phasing){
     #print(df_gene)
-    indirect_phasing_result <- perform_level_2_phasing(df_gene, vcf, 
+    indirect_phasing_result <- perform_haploblock_phasing(df_gene, vcf, 
                                                       haploBlocks, phasedVcf,
                                                       bamDna, bamRna,
                                                       purity, snp_dist=10000, 
@@ -1652,9 +1202,9 @@ phase <- function(df_gene, bamDna, bamRna,
                                                       geneDir, refGen)
     vm("indirect phasing done", verbose)
     if(!is.null(indirect_phasing_result)){
-      merged_comb_indirect <- left_join(all_combinations,
+      merged_comb_indirect <- left_join(all_combinations_export,
                                         indirect_phasing_result %>% 
-                                          select(comb_id, status_indirect=status),
+                                          select(comb_id, status_haploblock=status),
                                         by=c("comb_id_sorted"="comb_id"))      
     }
   }
@@ -1664,10 +1214,9 @@ phase <- function(df_gene, bamDna, bamRna,
                            by=c("comb_id"="comb_id")) %>%
     rowwise() %>%
     mutate(status=case_when(status_direct!="null" ~ status_direct,
-                            status_indirect!="null" ~ status_indirect,
+                            status_haploblock!="null" ~ status_haploblock,
                             TRUE ~ "null"
                             ),
-             #select_status(status_direct, status_indirect),
            tcn=min(tcn1, tcn2),
            wt_cp=calc_left_wt_copies(tcn,
                                      status,
@@ -1676,10 +1225,10 @@ phase <- function(df_gene, bamDna, bamRna,
            score = ifelse(status=="diff"&wt_cp<0.5,
                                2, 1),
            comb=comb_id,
-           phased=case_when(status_direct!="null" ~ "direct",
-                            status_indirect!="null" ~ "indirect",
-                            TRUE ~ "not"
-           )
+           phasing=case_when(status_direct!="null" ~ "direct",
+                            status_haploblock!="null" ~ "haploblock",
+                            TRUE ~ "none"
+            )
            )
   
   #print(direct_mut_phasing)
@@ -2007,27 +1556,6 @@ combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
   return(combined_uncovered)
 }
 #' @keywords internal
-check_opt_assgap <- function(assumeSomCnaGaps, ploidy){
-  if(assumeSomCnaGaps==TRUE&is.null(ploidy)){
-    warning("somatic CNA gaps can only be assumed if input ploidy is",
-            "provided. Provide ploidy=2 to assume diploid case")
-    return(FALSE)
-  } else {
-    return(assumeSomCnaGaps)
-  }
-}
-#' @keywords internal
-check_opt_incdel <- function(includeIncompleteDel, ploidy){
-  if(includeIncompleteDel==TRUE&is.null(ploidy)){
-    warning("Large scale deletions cannot be included without ploidy",
-                "Please provide input ploidy. Provide ploidy=2",
-                "to assume diploid case")
-    return(FALSE)
-  } else {
-    return(includeIncompleteDel)
-  }
-}
-#' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom dplyr as_tibble group_by mutate ungroup filter
 #' @importFrom purrr compact
@@ -2107,338 +1635,9 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
   }
   return(full_output)
 }
-#' @importFrom IRanges subsetByOverlaps
-#' @export
-predict_per_variant <- function(purity, 
-                             sex,
-                             somCna, 
-                             geneModel=NULL,
-                             somSmallVars=NULL, 
-                             germSmallVars=NULL,
-                             ploidy=NULL, 
-                             colnameTcn=NULL,
-                             colnameCnaType=NULL,
-                             includeHomoDel=TRUE,
-                             includeIncompleteDel=TRUE,
-                             assumeSomCnaGaps=FALSE,
-                             byTcn=TRUE,
-                             is_pre_eval=TRUE
-){
-  status <- info <- wt_cp <- . <- df_homdels <- df_all_mutations <- gene <-
-    final_phasing_info <- combined_read_details <-  final_output <-
-    uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
-    som_covered <- germ_covered <- final_phasing_info <- 
-    combined_snp_phasing <- NULL
-  ## check input for valid format
-  somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
-  germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
-  purity <- check_purity(purity)
-  ploidy <- check_ploidy(ploidy)
-  sex <- check_sex(sex)
-  geneModel <- check_gr_gene_model(geneModel, is_pre_eval)
-  assumeSomCnaGaps <- check_opt_assgap(assumeSomCnaGaps, ploidy)
-  somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
-                         assumeSomCnaGaps, colnameTcn, 
-                         colnameCnaType) 
-  includeIncompleteDel <- check_opt_incdel(includeIncompleteDel, ploidy)
-  includeHomoDel <- check_opt_incdel(includeHomoDel, ploidy)
-  if(is.null(geneModel)){
-    ## only small variants can be evaulated
-    if(includeIncompleteDel==TRUE|includeHomoDel==TRUE){
-      includeIncompleteDel <- FALSE
-      includeHomoDel <- FALSE
-      warning("To include large deletions the geneModel muist be provided.",
-              "IncludeHomoDel and IncludeIncompleteDel will be FALSE")
-    }
-    templateGenes <- c(somSmallVars$gene, germSmallVars$gene)
-  } else {
-    templateGenes <- geneModel$gene
-  }
-  
-  ## get variants not covered by CNV input
-  if(!is.null(somSmallVars)){
-    gr_som_cov <- subsetByOverlaps(somSmallVars, somCna) 
-    som_covered <- gr_som_cov$mid
-  }
-  if(!is.null(germSmallVars)){
-    gr_germ_cov <- subsetByOverlaps(germSmallVars, somCna) 
-    germ_covered <- gr_germ_cov$mid
-  }
-  combined_uncovered <- combine_uncovered_input_variants(somSmallVars, 
-                                                         germSmallVars,
-                                                         som_covered,
-                                                         germ_covered,
-                                                         templateGenes)
-  ## preapre input data for prediction (pre-evaluation)
-  df_germ <- prepare_germline_variants(
-    gr_germ_cov, 
-    somCna, purity, sex)
-  df_som <- prepare_somatic_variant_table(
-    gr_som_cov, 
-    templateGenes, 
-    somCna, purity, sex)
-  df_homdels <- extract_all_dels_of_sample(somCna, geneModel, 
-                                           "homdel", byTcn, sex, ploidy,
-                                           includeHomoDel)
-  df_incompletedels <- extract_all_dels_of_sample(somCna, geneModel, 
-                                                  "incompletedel", TRUE, sex, 
-                                                  ploidy, includeIncompleteDel)
-  ## predict zygosity for each gene
-  if(!is.null(df_germ)|!is.null(df_som)|!is.null(df_homdels)){
-    df_all_mutations <- combine_main_variant_tables(df_germ, df_som, 
-                                                    df_homdels,
-                                                    templateGenes, purity)
-  }
-  if(is_pre_eval==TRUE){
-    return(list(evaluation_per_variant= 
-                  bind_incdel_to_pre_eval(df_incompletedels, df_all_mutations),
-                combined_uncovered=combined_uncovered
-      
-    ))
-  } else {
-    return(list(evaluation_per_variant=df_all_mutations,
-                df_incompletedels=df_incompletedels,
-                combined_uncovered=combined_uncovered))    
-  }
-
-}
 vm <- function(mes, verbose=FALSE){
   if(verbose==TRUE){
     #message(paste0("\n",mes))
     print(mes)
   }
 }
-#' predicts zygosity of a set of genes of a sample
-#' @param purity purity of the sample (numeric value between 0 and 1 indicating 
-#' the fraction of relevant sample with control/unrelevant tissue)
-#' @param ploidy ploidy of the sample (numeric value)
-#' @param sex sex of the sample (character: "male", "female", "m", "f")
-#' @param somCna GRanges object containing all genomic regions with annotated 
-#' total copynumber and cna_type as metadata columns. The total-copynumber 
-#' column should be named "tcn" but also some other commonly used names. 
-#' It should contain numeric values or characters that can be converted to 
-#' numeric values. The cna_type column must contain the information about 
-#' loss of heterozygosity (LOH). Therefore the term "LOH" must be explicitely 
-#' mentioned in the column. If a genomic region is not present in the object, 
-#' it will be taken as heterozygous with neutral TCN of 2. 
-#' @param somSmallVars GRanges object containing all somatic small 
-#' variants (SNV and INDEL).
-#' Required metadata columns are reference base (ref/REF), 
-#' alternative base (alt/ALT),
-#' annotation of the gene name (gene/GENE) and the allele-frequency (af/AF). 
-#' If the object is not provided the tool assumes there are no somatic small 
-#' variants.
-#' @param germSmallVars GRanges object containing all germline small 
-#' variants (SNV and INDEL).
-#' Required metadata columns are reference base (ref/REF), alternative 
-#' base (alt/ALT),
-#' annotation of the gene name (gene/GENE) and the allele-frequency (af/AF)
-#' If the object is not provided the tool assumes there are no germline small 
-#' variants.
-#' @param geneModel GRanges object containing the gene-annoattion of 
-#' the used reference genome with metadata column of the gene name (gene)
-#' @param bamDna path to bam-file
-#' @param bamRna optional; path to rna file (bam format)
-#' @param includeHomoDel default = TRUE; if FALSE homozygous deleteions are 
-#' excluded
-#' @param includeIncompleteDel default = TRUE; if FALSE heterzygous deleteions 
-#' are excluded
-#' @param showReadDetail default = FALSE; if TRUE a table is added to the 
-#' output,
-#' @param printLog default = FALSE; if TRUE the gene which is evaluated is 
-#' printed in console, 
-#' containing the query-name of each read which was used to perform 
-#' haplotype-phasing and the info into which class it was assigned.
-#' @param assumeSomCnaGaps (logical, default=FALSE) Only required if the somCna
-#' object lacks copy number information for genomic segments on which small 
-#' variants are detected. By default, variants in such regions will be excluded 
-#' from the analysis as required information about the copy number is missing. 
-#' These variants will be attached to the final output list in a separate 
-#' tibble. To include them, this flag must be set TRUE and the ground ploidy 
-#' must be given as an input. This ground ploidy will then be taken as tcn in 
-#' the missing regions. If no ploidy is given the tool will assume the ground 
-#' ploidy of 2 when this flag is TRUE.
-#' @param byTcn logical, default=TRUE; optional if includeHomoDel or 
-#' includeIncompleteDelS is TRUE. If FALSE the tool will not use tcn as a 
-#' criterion to assign large deletions. It will use the cna_type column and 
-#' check for indicating strings like HOMDEL/HomoDel/DEL. Some commonly used 
-#' strings are covered. It is recommended to leave this flag TRUE
-#' @param colnameTcn character indicating the name of the metadata containing 
-#' the tcn information in the somCna object. If not provided the tool tries to 
-#' detect the column according to default names
-#' @param colnameCnaType character indicating the name of the metadata 
-#' containing cna type information in the somCna object. 
-#' If not provided the tool tries to detect the column according to default 
-#' names
-#' @param vcf character; path to variant call file (.vcf.gz format). 
-#' Will be used (if provided)
-#' for extended SNP phasing if variants on the same gene are too far away from
-#' each other for direct haplotype phasing
-#' @param distCutOff numeric, default=5000; if input vcf is provided and SNP
-#' phasing is performed, this will limt the distance at which the SNP phasing
-#' should not be tried anymore. As the probability of finding overlapping reads
-#' at such a long distance is very low and the runtime will increase
-#' exponentially.
-#' @return A list of dataframes. Those are the evaluation per variant, 
-#' the evaluation per gene and, if performed, the info about the 
-#' haplotype-phasing.
-#' @examples
-#' cnvs  = GenomicRanges::GRanges(
-#'   dplyr::tibble(
-#'     chr = "chr17",
-#'     start = c(170060, 34520990),
-#'     end = c(34520990, 83198614),
-#'     tcn = c(2, 1),
-#'     cna_type = c("neutral", "LOH")
-#'   )
-#' )
-#' somatic_vars = GenomicRanges::GRanges(
-#'   dplyr::tibble(
-#'     chr="chr17",
-#'     start = 7675088,
-#'     end = 7675088,
-#'     ref = "C",
-#'     alt = "T",
-#'     af = 0.65,
-#'     gene = "TP53" 
-#'   )
-#' )
-#' germline_vars = GenomicRanges::GRanges(
-#'   dplyr::tibble(
-#'     chr="chr17",
-#'     start = 41771694,
-#'     end = 41771694,
-#'     ref = "GTGT",
-#'     alt = "G",
-#'     af = 0.95,
-#'     gene = "JUP" 
-#'   )
-#' )
-#' reference = GenomicRanges::GRanges(
-#'   dplyr::tibble(
-#'     chr = "chr17",
-#'     start = c(7661778, 41754603),
-#'     end = c(7687538, 41786931),
-#'     gene = c("TP53", "JUP")
-#'   )
-#' )
-#' sex = "female"
-#' purity = 0.9
-#' bamfile <- system.file("extdata", "ZP_example.bam", 
-#'   package = "ZygosityPredictor")
-#' predict_zygosity(purity = purity, sex = sex, 
-#'   somCna = cnvs,
-#'   somSmallVars = somatic_vars,
-#'   germSmallVars = germline_vars,
-#'   geneModel = reference,
-#'   bamDna = bamfile
-#' )
-#' @importFrom stringr %>%
-#' @importFrom IRanges subsetByOverlaps
-#' @importFrom purrr compact
-#' @importFrom dplyr bind_rows nth select tibble
-#' @export
-predict_zygosity <- function(purity, 
-                             sex,
-                             somCna, 
-                             geneModel,
-                             bamDna,
-                             somSmallVars=NULL, 
-                             germSmallVars=NULL,
-                             bamRna=NULL,
-                             ploidy=NULL, 
-                             colnameTcn=NULL,
-                             colnameCnaType=NULL,
-                             includeHomoDel=TRUE,
-                             includeIncompleteDel=TRUE,
-                             showReadDetail=FALSE,
-                             printLog=FALSE,
-                             assumeSomCnaGaps=FALSE,
-                             byTcn=TRUE,
-                             vcf=NULL,
-                             haploBlocks=NULL,
-                             phasedVcf=NULL,
-                             distCutOff=5000,
-                             verbose=FALSE,
-                             logDir=NULL,
-                             refGen="hg19"
-                             ){
-  status <- info <- wt_cp <- . <- df_homdels <- df_all_mutations <- gene <-
-    final_phasing_info <- combined_read_details <-  final_output <-
-    uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
-    som_covered <- germ_covered <- final_phasing_info <- 
-    combined_snp_phasing <- evaluation_per_gene <- NULL
-  #vm("initializing evaluation per variant", verbose)
-  evaluation_per_variant_pre <- predict_per_variant(purity, 
-                                                sex,
-                                                somCna, 
-                                                geneModel,
-                                                somSmallVars, 
-                                                germSmallVars,
-                                                ploidy, 
-                                                colnameTcn,
-                                                colnameCnaType,
-                                                includeHomoDel,
-                                                includeIncompleteDel,
-                                                assumeSomCnaGaps,
-                                                byTcn,
-                                                is_pre_eval=FALSE)
-  evaluation_per_variant <- evaluation_per_variant_pre$evaluation_per_variant
-  if(!is.null(evaluation_per_variant)){
-    df_all_mutations <- evaluation_per_variant
-    if(!nrow(df_all_mutations)==0){
-      bamDna <- check_bam(bamDna)
-      bamRna <- check_rna(bamRna)
-      logDir <- check_logDir(logDir)
-      vcf <- check_vcf(vcf) 
-      haploBlocks <- check_haploblocks(haploBlocks)
-      phasedVcf <- check_vcf(phasedVcf)
-      #vm("initializing evaluation per gene", verbose)
-      result_list <- lapply(
-        unique(df_all_mutations$gene), 
-        predict_zygosity_genewise, 
-        df_all_mutations, 
-        bamDna,
-        bamRna,
-        showReadDetail,
-        printLog,
-        purity,
-        vcf,
-        haploBlocks,
-        phasedVcf,
-        distCutOff, 
-        verbose,
-        logDir,
-        refGen)
-      #print(result_list)
-      pre_scoring <- lapply(result_list, nth, n=1) %>% 
-        bind_rows()
-      final_result_list <- lapply(result_list, nth, n=2) %>% compact()
-      if(length(final_result_list)!=0){
-        final_phasing_info <- lapply(final_result_list, nth, n=2) %>% 
-          compact() %>% 
-          bind_rows() 
-        final_output <- lapply(final_result_list, nth, n=1) %>% 
-          bind_rows() %>%
-          select(gene, status, info)
-        # combined_read_details <- lapply(result_list, nth, n=3) %>% compact() %>%
-        #   bind_rows()
-        # combined_snp_phasing <- lapply(result_list, nth, n=4) %>% compact() %>%
-        #   bind_rows()
-      } 
-    }
-    evaluation_per_gene <- bind_incdel_to_final_eval(
-      evaluation_per_variant_pre$df_incompletedels,
-      final_output)
-  }
-  result_list <- list(
-    eval_per_variant=evaluation_per_variant,
-    eval_per_gene=evaluation_per_gene,
-    phasing_info=final_phasing_info,
-    #readpair_info=combined_read_details,
-    uncovered_input=evaluation_per_variant_pre$combined_uncovered#,
-    #ext_snp_phasing=combined_snp_phasing
-  ) %>%
-    compact()
-  return(result_list)
-} 

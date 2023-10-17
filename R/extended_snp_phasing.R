@@ -27,6 +27,18 @@ load_vars_from_vcf <- function(vcf, df_gene, gr_roi){
   return(vars_in_between_raw)
 }
 #' @keywords internal
+#' @importFrom igraph graph_from_data_frame shortest_paths
+find_path <- function(connections, mut_id1, mut_id2) {
+  graph <- graph_from_data_frame(connections, directed = FALSE)
+  shortest_path <- 
+    shortest_paths(graph, from = mut_id1, to = mut_id2, mode = "all")$vpath
+  if (length(shortest_path) > 0) {
+    return(names(unlist(shortest_path)))
+  } else {
+    return(NULL)
+  }
+}
+#' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom Rsamtools TabixFile
 #' @importFrom VariantAnnotation readVcf
