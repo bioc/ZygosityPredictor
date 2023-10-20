@@ -125,10 +125,20 @@ phase_along_path <- function(path, sub_checked_read_presence, bam_raw,
   return(sub_fin_comb)
 }
 
+perform_extended_snp_phasing <- function(df_gene, vcf, refGen, verbose){
+  
+  region_to_load <- paste0(unique(df_gene$chr), ":", min(df_gene$pos),
+                           "-", max(df_gene$pos)) %>%
+    GRanges()
+  print(paste0(unique(df_gene$chr), ":", min(df_gene$pos),
+               "-", max(df_gene$pos)))
+  loaded_vcf <- loadVcf(vcf, unique(df_gene$chr), region_to_load, refGen, 
+                        verbose)
+  print(loaded_vcf)
+}
 
 
-
-perform_extended_snp_phasing <- function(main_comb, vcf,
+perform_extended_snp_phasing_old <- function(main_comb, vcf,
                                          df_gene, bamDna, bamRna, 
                                          purity, full_read_info, RESULT,
                                          ext_snp_phasing,

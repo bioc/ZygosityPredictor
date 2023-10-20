@@ -1,3 +1,20 @@
+increment_call_depth <- function() {
+  call_depth <<- call_depth + 1
+  #assign("call_depth", call_depth + 1, envir = .GlobalEnv)
+}
+decrement_call_depth <- function() {
+  call_depth <<- call_depth - 1
+  #assign("call_depth", call_depth - 1, envir = .GlobalEnv)
+}
+store_log <- function(geneDir, obj, file){
+  if(!is.null(geneDir)){
+    if(!is.null(obj)){
+      write_tsv(obj, 
+                file=file.path(geneDir, 
+                               file))      
+    }
+  }
+}
 #' @keywords internal
 catt <- function(printLog, level, text){
   if(printLog==TRUE){
@@ -13,7 +30,7 @@ catt <- function(printLog, level, text){
 #' @importFrom dplyr tibble
 prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2, 
                                  verbose=FALSE){
-  vm("function: prepare_raw_bam_file", verbose)
+  vm(as.character(sys.call()[1]), verbose, 1)
   qname.first <- . <- NULL
   ## importFrom dplyr tibble filter
   ref_pos1 <- as.numeric(pos1)
@@ -31,7 +48,7 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
   ref_gr2 <- GRanges(seqnames = ref_chr2, 
                                    ranges = ref_pos2)
   ## now load all reads/read-pairs that cover the position of the first variant
-  #vm("loading reads", verbose)
+  #vm("loading reads", verbose, 1)
   all_covering_read_pairs <- readGAlignmentPairs(
     bamDna,
     param=ScanBamParam(
@@ -61,7 +78,7 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
     ]
     
   }
-  vm("  - done", verbose)
+  vm("  - done", verbose, -1)
   return(filtered_reads)
 }
 #' @keywords internal
@@ -70,6 +87,7 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
 #' @importFrom purrr compact
 #' @importFrom dplyr summarize pull
 insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
+  vm(as.character(sys.call()[1]), verbose, 1)
   seqnames <- start <- end <- tcn <- . <- NULL
   if(sex=="male"){
     allowed_chr <- allowed_inputs("chrom_names")
@@ -133,6 +151,7 @@ insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
     }
   })
   comb_somCna <- Reduce(function(x,y)c(x,y),new_somCna)
+  vm("  - done", verbose, -1)
   return(comb_somCna)
 }
 
@@ -154,131 +173,235 @@ pre_scoring <- function(tcn1, tcn2, status, aff_copies1, aff_copies2){
               left_wt_copies=left_wt_copies,
               pre_score=pre_score))
 }
+aggregate_probs <- function(ps){
+  if(length(ps)>1){
+    np <- ps[1]
+    for (n in seq(1, length(ps)-1, 1)){
+      np <- np+(1-np)*ps[n+1]
+    }
+    return(np)    
+  } else {
+    return(ps) 
+  }
+}
 #' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom tibble column_to_rownames
 #' @importFrom dplyr as_tibble group_by mutate tibble tally 
 #' @importFrom purrr set_names
-classify_combination <- function(classified_reads, purity, eval_full, printLog,
-                                 tcn1, tcn2, aff_copies1, 
-                                 aff_copies2, verbose=FALSE){
+classify_combination <- function(classified_reads, purity, printLog, 
+                                 verbose=FALSE){
+  vm(as.character(sys.call()[1]), verbose, 1)
   result <- . <- fac <- NULL
-  vm("classifying", verbose)
-  if(nrow(classified_reads)==0){
-    vm("not sure if this can happen?", verbose)
-    return(rep(0, 7) %>% t() %>% as.data.frame() %>% 
-             set_names(c("both", "none", "mut1", "mut2", "dev_var", 
-                         "no_overlap", "none_raw")) %>% 
-             mutate(status="null"))
-  }
-  #vm(unique(classified_reads$result), verbose)
-  number_pre <- classified_reads %>%
-    mutate(fac=factor(result, levels = c('both', 'mut1', 'mut2', 'none', 
-                                         "dev_var", 'read_in_read', 
-                                         'skipped'))) %>%
+  all_possible_results <- c('both', 'mut1', 'mut2', 'none', 
+                            "dev_var", 'read_in_read', 
+                            'skipped')
+  ## calculate expected counts according to aff copies for both cases:
+  ## same and diff
+  exp_diff <- tibble(fac=all_possible_results[1:3],
+                     exp=c(0,1,1)+0.0000001)
+  exp_same <- tibble(fac=all_possible_results[1:3],
+                     exp=c(1,0,0)+0.0000001)
+  number <- classified_reads %>%
+    mutate(fac=factor(result, levels = all_possible_results)) %>%
     group_by(fac, .drop = FALSE) %>%
-    tally()
-  #vm(number_pre, verbose)
-  number <- number_pre%>% 
+    tally() %>% 
     column_to_rownames(var='fac') %>%
     t() %>%
     as_tibble()
-  vm("numbers extracted", verbose)
   both <- number[['both']]
   mut1 <- number[['mut1']]
   mut2 <- number[['mut2']]
   none_raw <- number[['none']]
+  ## calculate confidence from basecalls and mapping quality of read
+  ## and aggregate them per classification result
+  cr_conf <- classified_reads %>%
+    rowwise() %>%
+    mutate(pb1=ascii_to_dec(baseq1),
+           pb2=ascii_to_dec(baseq2)) %>%
+    ungroup() %>%
+    mutate(
+           mq1=10^(as.numeric(mapq1)/(-10)),
+           mq2=10^(as.numeric(mapq2)/(-10)),
+           ppos1=(1-pb1)*(1-mq1),
+           ppos2=(1-pb2)*(1-mq2),
+           p_result=sqrt(ppos1*ppos2)
+           ) %>%
+    mutate(fac=factor(result, levels = all_possible_results)) %>%
+    group_by(fac, .drop = FALSE) %>%
+    summarize(n=length(fac),
+              prob_sum=sum(p_result))
+  
+  relevant_for_decision <- cr_conf %>%
+    filter(fac %in% c("both","mut1", "mut2")) %>%
+    select(fac, prob_sum)
+  ## get total number of relevant classifications
+  sum_rel <- sum(relevant_for_decision$prob_sum)
+  if(sum_rel==0){
+    status <- "null"
+    p <- 1
+    difference_norm_x <- ss_x <- sd_x <- ratio_norm_x <- NA
+    nstatus <- evidence <- certainty <- confidence <- 0
+  } else {
+    ## check for similarity of numbers in both, mut1 and mut2 by chi-squared
+    sim_diff <- chisq.test(t(left_join(exp_diff, relevant_for_decision,
+                                       by="fac") %>% 
+                               select(exp, prob_sum)))
+    sim_same <- chisq.test(t(left_join(exp_same, relevant_for_decision,
+                                       by="fac") %>% 
+                               select(exp, prob_sum)))
+    ## extract x-squared and p value from chiquared
+    ss_x=sim_same$statistic[[1]]
+    sd_x=sim_diff$statistic[[1]]
+    ## normalize x_squared by number of relevant classifications
+    norm_ss_x <- ss_x/sum_rel
+    norm_sd_x <- sd_x/sum_rel
+    difference_norm_x <- abs(norm_ss_x-norm_sd_x)
+    ratio_norm_x <- norm_sd_x/norm_ss_x
+    if(sd_x<ss_x){
+      status <- "diff"
+      nstatus <- 2
+      p <- sim_same$p.value
+      evid_for_dec <- sum(mut1, mut2)
+      evid_for_alt <- 2*both
+    } else {
+      status <- "same"
+      nstatus <- 1
+      p <- sim_diff$p.value
+      evid_for_dec <- 2*both
+      evid_for_alt <- sum(mut1, mut2)
+    }  
+    
+    evidence <- case_when(
+      evid_for_dec >= 20 ~ 3, #"high",
+      evid_for_dec >= 3  ~ 2, #"medium"
+      evid_for_dec > 1  ~ 1, #"low" 
+      nstatus==1 ~ 1,
+      TRUE ~ 0#"verylow"
+    )
+    cert_estimator <- evid_for_dec/evid_for_alt
+    certainty <- case_when(
+      cert_estimator >= 10 ~ 3,
+      cert_estimator >= 5 ~ 2,
+      cert_estimator >= 1 ~ 1,
+      TRUE ~ 0
+    )  
+    p_cat <- case_when(
+      p< 0.01 ~ 3,
+      p< 0.05 ~ 2,
+      p< 0.1 ~ 1,
+      TRUE ~ 0
+    )
+    sum_evi_cer <- evidence+certainty+p_cat
+    confidence <- sum_evi_cer 
+  }
+  
+  
+
   # now the purity is calculated out... actually all "none" detetions  count 
   # for mono-allelic inactivation.... but to get a more reliable result it 
   # would be necessary to detect reads which have both mutations
   # therefore we check if any "both" detections were found and if not, we 
   # assume that the "none" detections are artefacts or non tumor cell tissue   
-  none_adj_im <- none_raw-sum(number[1,])*(1-as.numeric(purity))
-  none_adj <- ifelse(none_adj_im<0,
-                     0,
-                     round(none_adj_im))
-  clear_sum <- sum(none_adj, both, mut1, mut2)
-  prob_diff <- sum(mut1, mut2)/clear_sum
-  prob_same <- sum(none_adj, both)/clear_sum
-  ## here the main decision is made
-  if(clear_sum==0){
-    status <- "null"
-    status_def_info <- "non-overlapping reads only -> null"
-  } else if(sum(mut1, mut2, both)==0){
-    ## if no evidence for both muts at the same read or at different reads can
-    ## be found, we assign status "null"
-    status <- "null"
-    status_def_info <- 
-      "Only reads without any variant: No evidence for same or diff -> null"
-#  } else if(eval_full==FALSE&none_raw==0&(mut1==0|mut2==0)){
-    ## if we are at extended SNP phasing, indicated by the eval_full parameter
-    ## we have to check if the variant we use to phase is a homozygous germline
-    ## variant. In this case, we cannot use it for phasing, as it will be 
-    ## detected at every read. To filter out such variants, we check if there 
-    ## are any reads without the variant. If we cannot find any
-    ## read in SNP phasing not having the variant, we assign "null" status as
-    ## we assume the variant to phase is homozygous germline. this method is
-    ## conservative.
-#    status <- "null"
-#    status_def_info <- paste(
-#      "one SNP of combination seems to be germline homozygous:",
-#      "Not usable for phasing -> null")
-  } else if(both==0){
-    status <- "diff"
-    status_def_info <- ifelse(mut1==0|mut2==0,
-      paste("no reads with both variants and reads with only one -> diff;",
-      "but one variant without any detection!"),
-      "variants found only on different reads -> diff"
-    )
-  } else if(prob_same>prob_diff){
-    status <- "same"
-    status_def_info <- ifelse(prob_diff>0,
-      paste("Reads detected carrying both variants -> same;",
-            "but also reads with only one!", "prob same:", prob_same, 
-            "prob diff:", prob_diff),
-      "variants detected on the same reads -> same"
-      )
-  } else if((mut1<0.1*sum(mut1, mut2)|mut2<0.1*sum(mut1, mut2))&
-            both>0.1*sum(mut1, mut2)){
-    status <- "same"
-    status_def_info <- 
-      paste("reads found with both variants and also with only one",
-            "number of detections of one variant smaller than 10 % of",
-            "overall evidence for diff and evidence for same higher -> same")
-  } else {
-    status <- "diff"
-    status_def_info <- "variants found only on different reads -> diff"
-  }
-  vm("creating final tibble", verbose)
-  ntabs <- ifelse(eval_full==TRUE, 3, 7)
-  catt(printLog, ntabs, status_def_info)
+#   none_adj_im <- none_raw-sum(number[1,])*(1-as.numeric(purity))
+#   none_adj <- ifelse(none_adj_im<0,
+#                      0,
+#                      round(none_adj_im))
+#   clear_sum <- sum(none_adj, both, mut1, mut2)
+#   prob_diff <- sum(mut1, mut2)/clear_sum
+#   prob_same <- sum(none_adj, both)/clear_sum
+#   ## here the main decision is made
+#   if(clear_sum==0){
+#     status_old <- "null"
+#     status_def_info <- "non-overlapping reads only -> null"
+#   } else if(sum(mut1, mut2, both)==0){
+#     ## if no evidence for both muts at the same read or at different reads can
+#     ## be found, we assign status "null"
+#     status_old <- "null"
+#     status_def_info <- 
+#       "Only reads without any variant: No evidence for same or diff -> null"
+# #  } else if(eval_full==FALSE&none_raw==0&(mut1==0|mut2==0)){
+#     ## if we are at extended SNP phasing, indicated by the eval_full parameter
+#     ## we have to check if the variant we use to phase is a homozygous germline
+#     ## variant. In this case, we cannot use it for phasing, as it will be 
+#     ## detected at every read. To filter out such variants, we check if there 
+#     ## are any reads without the variant. If we cannot find any
+#     ## read in SNP phasing not having the variant, we assign "null" status as
+#     ## we assume the variant to phase is homozygous germline. this method is
+#     ## conservative.
+# #    status <- "null"
+# #    status_def_info <- paste(
+# #      "one SNP of combination seems to be germline homozygous:",
+# #      "Not usable for phasing -> null")
+#   } else if(both==0){
+#     status_old <- "diff"
+#     status_def_info <- ifelse(mut1==0|mut2==0,
+#       paste("no reads with both variants and reads with only one -> diff;",
+#       "but one variant without any detection!"),
+#       "variants found only on different reads -> diff"
+#     )
+#   } else if(prob_same>prob_diff){
+#     status_old <- "same"
+#     status_def_info <- ifelse(prob_diff>0,
+#       paste("Reads detected carrying both variants -> same;",
+#             "but also reads with only one!", "prob same:", prob_same, 
+#             "prob diff:", prob_diff),
+#       "variants detected on the same reads -> same"
+#       )
+#   } else if((mut1<0.1*sum(mut1, mut2)|mut2<0.1*sum(mut1, mut2))&
+#             both>0.1*sum(mut1, mut2)){
+#     status_old <- "same"
+#     status_def_info <- 
+#       paste("reads found with both variants and also with only one",
+#             "number of detections of one variant smaller than 10 % of",
+#             "overall evidence for diff and evidence for same higher -> same")
+#   } else {
+#     status_old <- "diff"
+#     status_def_info <- "variants found only on different reads -> diff"
+#   }
+  #vm("creating final tibble", verbose, 1)
+  #ntabs <- ifelse(eval_full==TRUE, 3, 7)
+  #catt(printLog, ntabs, status_def_info)
   status_table <- tibble(
     both=both,
-    none=none_adj,
+    #none=none_adj,
     mut1=mut1,  
     mut2=mut2,
     dev_var=number[['dev_var']],
     no_overlap=sum(as.numeric(number[['read_in_read']]), 
                    as.numeric(number[['skipped']])),
     status=status,
-    none_raw=none_raw
+    nstatus=nstatus,
+    ss_x=ss_x,
+    sd_x=sd_x,
+    p=p,
+    evid=evidence,
+    cert=certainty,
+    conf=confidence,
+    diffnx=difference_norm_x,
+    ratnx=ratio_norm_x,
+    none_raw=none_raw,
+    #status_old=status_old,
+    DNA_rds=nrow(classified_reads %>% filter(origin=="DNA")),
+    RNA_rds=nrow(classified_reads %>% filter(origin=="RNA"))
     )
-  if(eval_full==TRUE){
-    vm("full evaluation requested", verbose)
-    psc <- pre_scoring(tcn1, tcn2, status, aff_copies1, aff_copies2)
-    if(status=="diff"&psc$pre_score==1&round(psc$mtcn)<=2){
-      catt(printLog, 3, 
-           "muts at different copies and tcn<=2, but left wt-copies >= 0.5!")
-    }
-    status_table <- status_table %>%
-      mutate(
-        score=psc$pre_score,
-        wt_cp=round(psc$left_wt_copies,2),
-        tcn=round(psc$mtcn,2),
-        info=paste(status_def_info, "-> left wt copies", 
-                   round(psc$left_wt_copies,2))
-      )
-  } 
+  # if(eval_full==TRUE){
+  #   vm("full evaluation requested", verbose, 1)
+  #   psc <- pre_scoring(tcn1, tcn2, status, aff_copies1, aff_copies2)
+  #   if(status=="diff"&psc$pre_score==1&round(psc$mtcn)<=2){
+  #     catt(printLog, 3, 
+  #          "muts at different copies and tcn<=2, but left wt-copies >= 0.5!")
+  #   }
+  #   status_table <- status_table %>%
+  #     mutate(
+  #       score=psc$pre_score,
+  #       wt_cp=round(psc$left_wt_copies,2),
+  #       tcn=round(psc$mtcn,2),
+  #       info=paste(status_def_info, "-> left wt copies", 
+  #                  round(psc$left_wt_copies,2))
+  #     )
+  # } 
+  vm("  - done", verbose, -1)
   return(status_table)
 }  
 #' @keywords internal
@@ -731,45 +854,51 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
   cna_type <- gene <- ref <- alt <- af <- tcn <- cna_type <- chr <- 
     aff_cp <- wt_cp <- . <- tcn_assumed <- NULL
   if(!is.null(somSmallVars)){
-    rel <- somSmallVars%>%
-      merge_sCNAs(., somCna) %>%
-      
-      ################################
-      mutate(
-        origin="somatic",
-        class=define_class(ref, alt),
-        aff_cp = aff_som_copies(chr, af, tcn, purity, sex),
-        wt_cp = tcn-aff_cp,
-        pre_info = 
-          ifelse(isTRUE(str_detect(cna_type,'LOH')),
-            ifelse(wt_cp<=0.5,
-              paste(
-                  'somatic-variant -> LOH -> left wt copies',round(wt_cp,2),
-                  '-> all copies affected'),
-              paste(
-                  'somatic-variant -> LOH -> ',
-                  "left wt copies",round(wt_cp,2),"-> wt copies left")),
-            ifelse(chr=="X"&sex=="male",
+    reduced_to_templateGenes <- 
+      somSmallVars[which(somSmallVars$gene %in% templateGenes)]
+    if(length(reduced_to_templateGenes)>0){
+      tbl_prepared_variants <- reduced_to_templateGenes %>%
+        merge_sCNAs(., somCna) %>%
+        
+        ################################
+        mutate(
+          origin="somatic",
+          class=define_class(ref, alt),
+          aff_cp = aff_som_copies(chr, af, tcn, purity, sex),
+          wt_cp = tcn-aff_cp,
+          vn_status=case_when(
+            (isTRUE(str_detect(cna_type,'LOH'))|chr=="X"&sex=="male")&
+              wt_cp<=0.5 ~ 2,
+            TRUE ~ 1
+          ),
+          pre_info = 
+            ifelse(isTRUE(str_detect(cna_type,'LOH')),
               ifelse(wt_cp<=0.5,
                 paste(
-                  "somatic-variant -> chrX & male -> ",
-                  "left wt copies",round(wt_cp,2),"-> all copies affected"),
+                    'somatic-variant -> LOH -> left wt copies',round(wt_cp,2),
+                    '-> all copies affected'),
                 paste(
-                  'somatic-variant -> chrX & male -> left wt copies ',
-                  round(wt_cp,2),
-                  '-> wt copies left')),
-                'somatic-variant -> no LOH -> wt copies left')
-        )
-      )%>%
-      filter(gene %in% templateGenes)
-    if(nrow(rel)==0){
-      return(NULL)
+                    'somatic-variant -> LOH -> ',
+                    "left wt copies",round(wt_cp,2),"-> wt copies left")),
+              ifelse(chr=="X"&sex=="male",
+                ifelse(wt_cp<=0.5,
+                  paste(
+                    "somatic-variant -> chrX & male -> ",
+                    "left wt copies",round(wt_cp,2),"-> all copies affected"),
+                  paste(
+                    'somatic-variant -> chrX & male -> left wt copies ',
+                    round(wt_cp,2),
+                    '-> wt copies left')),
+                  'somatic-variant -> no LOH -> wt copies left')
+          )
+        )      
     } else {
-      return(rel)
+      tbl_prepared_variants <- NULL
     }
   } else {
-    return(NULL)
+    tbl_prepared_variants <- NULL
   }
+  return(tbl_prepared_variants)
 }
 #' @keywords internal
 #' description follows
@@ -839,6 +968,7 @@ extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE,
                    aff_cp=ploidy-as.numeric(CNV[["tcn"]]),
                    wt_cp=as.numeric(CNV[["tcn"]]),
                    pre_info=pre_info,
+                   vn_status=ifelse(DEL_TYPE=="homdel", 2, 1)
             ) %>%
             return()
         }
@@ -870,6 +1000,11 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
         class=define_class(ref, alt),
         aff_cp = aff_germ_copies(chr, af, tcn, purity, sex, 1),
         wt_cp = tcn-aff_cp,
+        vn_status=case_when(
+          isFALSE(cna_type=='LOH') ~ 1,
+          af>=0.5 ~ 2,
+          TRUE ~ -1 
+        ),
         pre_info = 
           ifelse(isTRUE(cna_type=='LOH'),
             ifelse(af>=0.5,
@@ -894,7 +1029,8 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
              cna_type,
              aff_cp,
              wt_cp,
-             pre_info
+             pre_info,
+             vn_status
       ) 
     return(df_germ)
   }
@@ -940,7 +1076,7 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
                                         ref_pos1, 
                                         ref_pos2, 
                                         verbose=FALSE){
-  #vm("checking DNA", verbose)
+  #vm("checking DNA", verbose, 1)
   dna_bam <- prepare_raw_bam_file(bamDna, 
                                   ref_chr1, 
                                   ref_chr2, 
@@ -951,7 +1087,7 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
     dna_bam$origin <- "DNA"
   }
   if(!is.null(bamRna)){
-    #vm("checking RNA", verbose)
+    #vm("checking RNA", verbose, 1)
     rna_bam <- prepare_raw_bam_file(bamRna, 
                                     ref_chr1, 
                                     ref_chr2, 
@@ -969,17 +1105,24 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
   return(c(dna_bam, rna_bam))
 }
 ascii_to_dec <- function(ascii_encoded){
-  ## apply statistics
-  #ascii_encoded <- str_sub(qual_string, start=1, end=1)
-  exp <- (as.integer(charToRaw(ascii_encoded))-33)/(-10)
-  # Convert the QUAL string to raw hexadecimal
-  return(10^exp)
+  if(is.na(ascii_encoded)){
+    return(NA)
+  } else {
+    exp <- (as.integer(charToRaw(ascii_encoded))-33)/(-10)
+    if(length(exp)>1){
+      exp <- mean(exp)
+    }
+    # Convert the QUAL string to raw hexadecimal
+    return(10^exp)    
+  }
+
 }
 
 #' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom dplyr tibble 
 classify_reads <- function(line, bamDna, bamRna, verbose){
+  vm(as.character(sys.call()[1]), verbose, 1)
   dist <- abs(as.numeric(line[['pos1']])-as.numeric(line[['pos2']]))
   ref_pos1 <- as.numeric(line[['pos1']])
   ref_pos2 <- as.numeric(line[['pos2']])
@@ -1003,7 +1146,7 @@ classify_reads <- function(line, bamDna, bamRna, verbose){
   #print(ref_ref1)
   #print(ref_ref2)
   if(!length(bam)==0){  
-    vm("reads detected, applying core function", verbose)
+    #vm("reads detected, applying core function", verbose, 1)
     classified_reads <- lapply(unique(bam$qname),
                                core_tool,
                                bam, 
@@ -1021,12 +1164,13 @@ classify_reads <- function(line, bamDna, bamRna, verbose){
     #  mutate(baseq1_conv=ascii_to_dec(baseq1),
     #         baseq2_conv=ascii_to_dec(baseq2))
     
-    vm("reads classified", verbose)
+    #vm("reads classified", verbose, 1)
     
   } else {
-    #vm("no reads detected, return empty df", verbose)
+    #vm("no reads detected, return empty df", verbose, 1)
     classified_reads <- tibble()
   } 
+  vm("  - done", verbose, -1)
   return(classified_reads)
 }
 #' @keywords internal
@@ -1063,7 +1207,9 @@ return_null_result <- function(main_comb, bamRna, ext_snp_info){
                        sep="-"),
       dist=as.numeric(main_comb[["dist"]]),
       status="null",
+      nstatus=0,
       score=1,
+      conf=NA,
       wt_cp=min(as.numeric(main_comb[['tcn1']]), 
                 as.numeric(main_comb[['tcn2']])) %>% 
         round(2),
@@ -1087,16 +1233,18 @@ get_genotype <- function(gt, status){
   } 
 }
 
-loadVcf <- function(phasedVcf, chrom, region_to_load, refGen, verbose){
-  vm("function: loadVcf", verbose)
+loadVcf <- function(vcf_in, chrom, region_to_load, refGen, verbose){
+  vm(as.character(sys.call()[1]), verbose, 1)
   ## first check which format input vcf has
-  gr_list <- lapply(phasedVcf, function(VCF){
+  gr_list <- lapply(vcf_in, function(VCF){
     #vm(class(VCF), verbose)
     if(is(VCF, "TabixFile")){
       if(chrom %in% seqnamesTabix(VCF)){
+        #print("TabixFile")
         loadedVcf <- 
           readVcf(VCF, refGen, 
                   param=region_to_load)
+        #print(loadedVcf)
         gt <- VariantAnnotation::geno(loadedVcf)$GT %>% as.character()
         combVcf <- rowRanges(loadedVcf)
         combVcf$gt <- gt
@@ -1120,7 +1268,7 @@ loadVcf <- function(phasedVcf, chrom, region_to_load, refGen, verbose){
   #print(gr_list)
   gr_obj <- gr_list %>% compact() %>%
     Reduce(function(x,y)c(x,y),.) #%>%
-  vm("  - done", verbose)
+  vm("  - done", verbose, -1)
   return(gr_obj)
 }
 #' @keywords internal
@@ -1140,6 +1288,19 @@ eval_direct_results <- function(status_per_comb, phasedVcf,
   }
   return(try)
 }
+eval_haploblock_phasing <- function(do_haploblock_phasing,
+                                    haploblock_phasing){
+  if(do_haploblock_phasing){
+    if(is.null(haploblock_phasing)){
+      try <- TRUE
+    } else {
+      try <- FALSE
+    }
+  } else {
+    try <- FALSE
+  }
+  return(try)
+}
 
 select_status <- function(status_direct, status_haploblock){
   if("diff" %in% c(status_direct, status_haploblock)){
@@ -1150,7 +1311,46 @@ select_status <- function(status_direct, status_haploblock){
     return("null")
   }
 }
-
+aggregate_phasing <- function(all_combinations, status_direct_phasing, 
+                  status_haploblock_phasing, verbose){
+  vm(as.character(sys.call()[1]), verbose, 1)
+  if(!is.null(status_haploblock_phasing)){
+    #print(11111111111111111)
+    merged_comb_indirect <- left_join(all_combinations,
+                                      status_haploblock_phasing %>% 
+                                        select(comb, status_haploblock=status),
+                                      by=c("comb_id_sorted"="comb")) 
+    #print(22222222222222)
+  } else {
+    merged_comb_indirect <- all_combinations %>%
+      mutate(status_haploblock="null")
+  }
+  merged_comb_full <- left_join(merged_comb_indirect,
+                                status_direct_phasing %>% 
+                                  select(comb=comb, status_direct=status, 
+                                         conf_direct=conf),
+                                by=c("comb_id_sorted"="comb")) %>%
+    rowwise() %>%
+    mutate(status=case_when(status_direct!="null" ~ status_direct,
+                            status_haploblock!="null" ~ status_haploblock,
+                            TRUE ~ "null"
+    ),
+    tcn=min(tcn1, tcn2),
+    wt_cp=calc_left_wt_copies(tcn,
+                              status,
+                              aff_cp1,
+                              aff_cp2),
+    score = ifelse(status=="diff"&wt_cp<0.5,
+                   2, 1),
+    comb=comb_id,
+    phasing=case_when(status_direct!="null" ~ "direct",
+                      status_haploblock!="null" ~ "haploblock",
+                      TRUE ~ "none"
+    )
+    )
+  vm("  - done", verbose, -1)
+  return(merged_comb_full)
+}
 #' @keywords internal
 #' description follows
 #' @importFrom stringr %>%
@@ -1159,100 +1359,53 @@ select_status <- function(status_direct, status_haploblock){
 phase <- function(df_gene, bamDna, bamRna, 
                   showReadDetail, purity, vcf, haploBlocks, phasedVcf,
                   distCutOff, printLog, verbose, logDir, refGen){
-  pos1 <- pos2 <- mut_id1 <- mut_id2 <- qname.first <- result <- . <- origin <- 
-    qname <- mut_id <- nreads <- status <- geneDir <- NULL
+  vm(as.character(sys.call()[1]), verbose, 1)
+  haploblock_phasing <- NULL
   if(!is.null(logDir)){
     geneDir <- file.path(logDir, unique(df_gene$gene))
     dir.create(geneDir)
   }
-  #print("DF_GENE:")
-  #print(df_gene)
   ## (1): define all combinations of variants to be phased
   all_combinations <- make_phasing_combinations(df_gene) 
-  print(names(all_combinations))
   ## (2): perform direct phasing between variants (read-based)
-  direct_mut_phasing <- perform_direct_phasing(all_combinations, bamDna, bamRna, 
-                                               purity,
-                                               verbose, printLog, 
-                                               showReadDetail)
-  
-  status_per_comb <- lapply(direct_mut_phasing, nth, 1) %>% bind_rows() %>%
-    select(comb_id=comb, status)
-  
-  ## (3): check if indirect phasing can/should be performed
-  do_indirect_phasing <- eval_direct_results(status_per_comb, phasedVcf,
-                                             haploBlocks)
-  ## to return, some infos of the all_combinations are required, remove not 
-  ## necesarry info from the object
-  all_combinations_export <- all_combinations %>%
-    select(dist, comb_id, comb_id_sorted, tcn1, tcn2, aff_cp1, aff_cp2)
-  ## just to pre define... will be overwritten if necesarry
-  merged_comb_indirect <- all_combinations_export %>%
-    mutate(status_haploblock="null")
-  #print(do_indirect_phasing)
-  
-  if(do_indirect_phasing){
-    #print(df_gene)
-    indirect_phasing_result <- perform_haploblock_phasing(df_gene, vcf, 
-                                                      haploBlocks, phasedVcf,
-                                                      bamDna, bamRna,
-                                                      purity, snp_dist=10000, 
-                                                      distCutOff,
-                                                      printLog, verbose,
-                                                      geneDir, refGen)
-    vm("indirect phasing done", verbose)
-    if(!is.null(indirect_phasing_result)){
-      merged_comb_indirect <- left_join(all_combinations_export,
-                                        indirect_phasing_result %>% 
-                                          select(comb_id, status_haploblock=status),
-                                        by=c("comb_id_sorted"="comb_id"))      
-    }
-  }
-  merged_comb_full <- left_join(merged_comb_indirect,
-                                status_per_comb %>% 
-                                  select(comb_id, status_direct=status),
-                           by=c("comb_id"="comb_id")) %>%
-    rowwise() %>%
-    mutate(status=case_when(status_direct!="null" ~ status_direct,
-                            status_haploblock!="null" ~ status_haploblock,
-                            TRUE ~ "null"
-                            ),
-           tcn=min(tcn1, tcn2),
-           wt_cp=calc_left_wt_copies(tcn,
-                                     status,
-                                              aff_cp1,
-                                              aff_cp2),
-           score = ifelse(status=="diff"&wt_cp<0.5,
-                               2, 1),
-           comb=comb_id,
-           phasing=case_when(status_direct!="null" ~ "direct",
-                            status_haploblock!="null" ~ "haploblock",
-                            TRUE ~ "none"
-            )
-           )
-  
-  #print(direct_mut_phasing)
+  direct_phasing <- perform_direct_phasing(all_combinations, bamDna, bamRna, 
+                                           purity, verbose, printLog, 
+                                           showReadDetail)
+  haploblock_phasing <- perform_haploblock_phasing(direct_phasing, df_gene, 
+                                                   haploBlocks, phasedVcf,
+                                                   bamDna, bamRna, purity,  
+                                                   distCutOff, printLog, 
+                                                   verbose, geneDir, refGen) 
+  imbalance_phasing <- perform_imbalance_phasing(direct_phasing, 
+                                                 haploblock_phasing)
+  status_direct_phasing <- direct_phasing[[1]]
+  info_direct_phasing <- direct_phasing[[2]]
+  status_haploblock_phasing <- haploblock_phasing[[1]]
+  info_haploblock_phasing <- haploblock_phasing[[2]]
+  aggregated_phasing <- aggregate_phasing(all_combinations, 
+                                          status_direct_phasing, 
+                                          status_haploblock_phasing, verbose)
   full_phasing_result <- list(
-    merged_comb_full,
-    direct_mut_phasing
+    aggregated_phasing,
+    direct_phasing,
+    status_haploblock_phasing
   )
-  if(!is.null(geneDir)){
-    write_tsv(lapply(direct_mut_phasing, nth, 1) %>% bind_rows(), 
-              file=file.path(geneDir, "direct_phasing.tsv"))
-  }
+  store_log(geneDir, info_direct_phasing, "direct_phasing.tsv")
+  store_log(geneDir, info_haploblock_phasing, "haploblock_phasing.tsv")
+  vm("  - done", verbose, -1)
   return(full_phasing_result) 
 }
 eval_phasing <- function(all_comb, df_gene, log_obj, printLog, verbose){
-  vm("start evaluation of phasing results", verbose)
+  vm(as.character(sys.call()[1]), verbose, 1)
   if(nrow(all_comb)==1){
-    vm("only one combination", verbose)
+    #vm("only one combination", verbose)
     log_obj[['score']] <- all_comb$score
     log_obj[['info']] <- all_comb$info
     log_obj[['tcn']] <- all_comb$tcn
     log_obj[['aff_cp']] <- as.numeric(all_comb$tcn-all_comb$wt_cp)
     log_obj[['class']] <- paste("comb:", all_comb$comb)
   } else if(max(all_comb$score)==2){
-    vm("at least one combination that affects all copies", verbose)
+    #vm("at least one combination that affects all copies", verbose)
     most_important_comb <- all_comb %>% 
       filter(wt_cp==min(all_comb$wt_cp)) %>%
       .[1,]
@@ -1267,7 +1420,7 @@ eval_phasing <- function(all_comb, df_gene, log_obj, printLog, verbose){
   } else if(str_count(paste(all_comb$status, collapse=' '),
                       'diff')==nrow(all_comb)&
             nrow(all_comb)>=mean(as.numeric(df_gene$tcn))){
-    vm("unclear result: tcn 2, all diff but left_wt copies too high", verbose)
+    #vm("unclear result: tcn 2, all diff but left_wt copies too high", verbose)
     most_important_comb <- all_comb %>% 
       filter(wt_cp==min(all_comb$wt_cp)) %>%
       .[1,]
@@ -1301,7 +1454,7 @@ eval_phasing <- function(all_comb, df_gene, log_obj, printLog, verbose){
     #   as.numeric()
     # log_obj[['class']] <- paste("comb:", most_important_comb$comb)
   } else if(nrow(all_comb)>3){
-    vm("large number of variants", verbose)
+    #vm("large number of variants", verbose)
     most_important_comb <- all_comb %>% 
       filter(wt_cp==min(all_comb$wt_cp)) %>%
       .[1,]
@@ -1315,7 +1468,7 @@ eval_phasing <- function(all_comb, df_gene, log_obj, printLog, verbose){
       as.numeric()
     log_obj[['class']] <- paste("comb:", most_important_comb$comb)
   } else {
-    vm("other", verbose)
+    #vm("other", verbose)
     #print(names(all_comb))
     #print(all_comb %>% select(wt_cp))
     most_important_comb <- all_comb %>% 
@@ -1330,15 +1483,18 @@ eval_phasing <- function(all_comb, df_gene, log_obj, printLog, verbose){
     log_obj[['class']] <- paste("comb:", 
                                 most_important_comb$comb)            
   }
-  vm("finished evaluation, returning results", verbose)
+  #vm("finished evaluation, returning results", verbose)
   log_obj[['info']] <- paste("phasing:", log_obj[['info']])
+  vm("  - done", verbose, -1)
   return(log_obj)
 }
 #' @keywords internal
 #' desicion tree if one variant already affects all copies in pre evaluation
 eval_one_mut_affects_all <- function(df_gene, log_obj, printLog){
   concern_info <- df_gene %>% 
-    filter(str_detect(pre_info, "all copies affected")) %>% .[1,]
+    filter(vn_status==2) %>%
+    .[1,]
+    #filter(str_detect(pre_info, "all copies affected")) %>% .[1,]
   class <- get_classification(concern_info)
   origin <- ifelse(str_detect(concern_info$origin, "germ"),
                    "germ-",
@@ -1365,26 +1521,8 @@ eval_one_mut <- function(df_gene, log_obj, printLog){
   catt(printLog, 1, df_gene$pre_info)
   return(log_obj)
 }
-#' @keywords internal
-#' description follows
-#' @importFrom stringr %>% str_replace_all str_count str_detect
-#' @importFrom dplyr as_tibble group_by relocate bind_rows left_join select tally mutate filter nth relocate
-predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna, 
-                                      bamRna, showReadDetail,
-                                      printLog, purity, vcf, haploBlocks,
-                                      phasedVcf, distCutOff, 
-                                      verbose, logDir, refGen){
-  if(printLog==TRUE){
-    message(GENE)
-  }
-  gene <- pre_info <-  chr <-  pos <- wt_cp <-  mut_id <- status <- . <- 
-    score <- comb <- dist <- tcn <- info <- n <- NULL 
-  start_gene_eval <- Sys.time()
-  pre_df_gene <- df_all_mutations %>% filter(gene==GENE)    
-  df_gene_raw <- pre_df_gene%>%
-    # all germline variants which are lost in the tumor are excluded
-    filter(!str_detect(pre_info, 'variant lost in tumor'))
-  ## check if variants at the same position are present
+remove_duplicated_variants <- function(df_gene_raw, verbose){
+  vm(as.character(sys.call()[1]), verbose, 1)
   n_vars_per_pos <- df_gene_raw %>%
     group_by(chr, pos) %>%
     tally() %>%
@@ -1398,11 +1536,11 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
         ## if both vars have the same impac we just select the first
         .[1,]
       warning(
-          "more than one variant detected at position:", 
-          VAR[["chr"]], ":", VAR[["pos"]],
-          "\n  maybe an indel with shifted annotation of position?",
-          "\nSelecting variant of highest relevance by lowest left wt-copies:",
-          selected$mut_id)
+        "more than one variant detected at position:", 
+        VAR[["chr"]], ":", VAR[["pos"]],
+        "\n  maybe an indel with shifted annotation of position?",
+        "\nSelecting variant of highest relevance by lowest left wt-copies:",
+        selected$mut_id)
       to_remove <- df_gene_raw %>% 
         filter(chr==VAR[["chr"]],
                pos==VAR[["pos"]]) %>%
@@ -1420,22 +1558,51 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
   } else {
     df_gene <- df_gene_raw
   }
+  vm("  - done", verbose, -1)
+  return(df_gene)
+}
+#' @keywords internal
+#' description follows
+#' @importFrom stringr %>% str_replace_all str_count str_detect
+#' @importFrom dplyr as_tibble group_by relocate bind_rows left_join select tally mutate filter nth relocate
+predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna, 
+                                      bamRna, showReadDetail,
+                                      printLog, purity, vcf, haploBlocks,
+                                      phasedVcf, distCutOff, 
+                                      verbose, logDir, refGen){
+  vm("predict_zygosity_genewise", verbose, 1)
+  if(printLog==TRUE){
+    message(GENE)
+  }
+  gene <- pre_info <-  chr <-  pos <- wt_cp <-  mut_id <- status <- . <- 
+    score <- comb <- dist <- tcn <- info <- n <- all_comb <- 
+    all_comb_to_export <- NULL 
+  start_gene_eval <- Sys.time()
+  pre_df_gene <- evaluation_per_variant %>% filter(gene==GENE)    
+  
+  ## all germline variants which are lost in the tumor are excluded, 
+  ## vn_status = -1
+  df_gene_raw <- pre_df_gene%>%
+    #filter(!str_detect(pre_info, 'variant lost in tumor'))
+    filter(vn_status>=0)
+  ## check if variants at the same position are present
+  df_gene <- remove_duplicated_variants(df_gene_raw, verbose)
+  ## check if variants remain in that gene
   if(!nrow(df_gene)==0){
+    ## create basic frame to store data
     log_obj <- list(gene=GENE, n_mut=nrow(df_gene))
-    all_comb <- NULL
-    all_comb_to_export <- NULL
     #read_details <- NULL
     #snp_phasing <- NULL
     ## (1): check if any of the mutations already affects all alleles           
-    if(str_detect(paste(df_gene$pre_info, collapse = ' '), 
-                  'all copies affected')){
+    # if(str_detect(paste(df_gene$pre_info, collapse = ' '), 
+    #               'all copies affected')){
+    if(any(df_gene$vn_status==2)){
       eval_for_gene <- eval_one_mut_affects_all(df_gene, log_obj, printLog)
     ## (2): if only one variant is present  
     } else if(nrow(df_gene)==1){
       eval_for_gene <- eval_one_mut(df_gene, log_obj, printLog)
     ## (3): more than one variant present in gene   
     } else {  
-      
       catt(printLog, 1, c(nrow(df_gene) ,
             "variants detected: Initializing haplotype phasing"))
       
@@ -1444,12 +1611,10 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
       full_phasing_result <- phase(df_gene, bamDna, bamRna, showReadDetail,
                         purity, vcf, haploBlocks, phasedVcf,
                         distCutOff, printLog, verbose, logDir, refGen)
-      vm("full phasing done", verbose)
+      #print(full_phasing_result)
+      #vm("full phasing done", verbose, 1)
       all_comb <- full_phasing_result[[1]] %>%
         mutate(gene=GENE)
-      
-      #print(all_comb %>% select(gene, status, left_wt_copies))
-      #print(names(all_comb))
       
       all_comb_to_export <- all_comb %>% 
         select(-score) %>%
@@ -1470,15 +1635,23 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
       # }
       
     } 
-    vm("evaluation for gene done", verbose)
+    #vm("evaluation for gene done", verbose)
     #print(log_obj)
+    end_gene_eval <- Sys.time()
     df_reduced <- eval_for_gene %>% as_tibble() %>%
       mutate(status=ifelse(score==2,
                            "all_copies_affected",
                            "wt_copies_left"),
              info=str_replace_all(info, 
                                   " -> all copies affected| -> wt copies left",
-                                  "")) 
+                                  ""),
+             eval_time_s=round(
+               as.numeric(
+                 difftime(
+                   end_gene_eval, 
+                   start_gene_eval,
+                   units="secs")
+               ),3)) 
     zygosity_gene <- list(pre_df_gene, 
                           list(df_reduced, 
                                all_comb_to_export)#, 
@@ -1498,7 +1671,8 @@ predict_zygosity_genewise <- function(GENE, df_all_mutations, bamDna,
                         units="secs")
                       ),3), "s") 
   }
-  vm("returning result", verbose)
+ # vm("returning result", verbose)
+  vm("  - done", verbose, -1)
   return(zygosity_gene)
 }
 #' @keywords internal
@@ -1635,9 +1809,17 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
   }
   return(full_output)
 }
-vm <- function(mes, verbose=FALSE){
+vm <- function(mes, verbose=FALSE, depth=0){
+  #print(call_depth)
+  if(depth>0){
+    increment_call_depth()
+  } else if(depth<0){
+    decrement_call_depth()
+  }
   if(verbose==TRUE){
+    #print(call_depth)
+    message(paste(rep(" ", 2*call_depth),collapse=""), mes)
     #message(paste0("\n",mes))
-    print(mes)
+    #print(mes)
   }
 }

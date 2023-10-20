@@ -3,6 +3,7 @@
 #' @importFrom stringr str_match
 #' @importFrom GenomicRanges elementMetadata elementMetadata<-
 assign_correct_colnames <- function(obj, type){
+  #vm(as.character(sys.call()[1]), verbose, 1)
   . <- NULL
   if(type=="scna"){
     col_tcn <- str_match(
@@ -48,7 +49,7 @@ assign_correct_colnames <- function(obj, type){
         seq_len(length(obj))    
     }    
   }
-  
+  #vm("  - done", verbose, -1)
   return(obj)
 }
 #' @keywords internal
@@ -119,6 +120,7 @@ check_chr <- function(chr){
 check_somCna <- function(somCna, geneModel, sex, ploidy,
                          assumeSomCnaGaps, colnameTcn, 
                          colnameCnaType){
+  #vm(as.character(sys.call()[1]), verbose, 1)
   . <- NULL
   ## check if class is GRanges
   # if(!is(somCna, "GRanges")){
@@ -202,6 +204,7 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
     }
     
   }
+  #vm("  - done", verbose, -1)
   return(new_somCna)
   #}
 }
