@@ -6,11 +6,13 @@ assign_correct_colnames <- function(obj, type){
   #vm(as.character(sys.call()[1]), verbose, 1)
   . <- NULL
   if(type=="scna"){
+    ## define correct tcn column
     col_tcn <- str_match(
       nm_md(obj), paste(allowed_inputs("colnames_tcn"), collapse="|")) %>%
       .[which(!is.na(.))]
     elementMetadata(obj)[,"tcn"] <- 
-      elementMetadata(obj)[,col_tcn]   
+      elementMetadata(obj)[,col_tcn] 
+    ## define correct cna_type column
     if("LOH" %in% nm_md(obj)){
       obj$cna_type <- case_when(obj$LOH==TRUE ~ "LOH",
                                 TRUE ~ "HZ")
@@ -21,6 +23,25 @@ assign_correct_colnames <- function(obj, type){
         .[which(!is.na(.))]   
       elementMetadata(obj)[,"cna_type"] <- 
         elementMetadata(obj)[,col_cna_type]
+      obj$LOH <- case_when(str_detect(obj$cna_type, "LOH") ~ TRUE,
+                           TRUE ~ FALSE)
+    }
+    ## define allelic imbalance column (optional input)
+    ## check if column provided in input
+    col_all_imb <- str_match(
+      nm_md(obj), paste(allowed_inputs("colnames_all_imb"), 
+                        collapse="|")) %>%
+      .[which(!is.na(.))] 
+    if(length(col_all_imb)>0){
+    ## if colum already there, rename it
+      elementMetadata(obj)[,"all_imb"] <- 
+        elementMetadata(obj)[,col_all_imb]
+    } else {
+    ## if not yet there, calculate it for segments where it is possible
+      obj$all_imb <- case_when(
+        obj$LOH==FALSE&round(as.numeric(obj$tcn))%%2!=0&as.numeric(obj$tcn)>=2.5 ~ TRUE,
+        TRUE ~ FALSE
+      )
     }
   } else {
     col_gene <- str_match(
@@ -119,42 +140,12 @@ check_chr <- function(chr){
 #' @importFrom methods is
 check_somCna <- function(somCna, geneModel, sex, ploidy,
                          assumeSomCnaGaps, colnameTcn, 
-                         colnameCnaType){
-  #vm(as.character(sys.call()[1]), verbose, 1)
+                         colnameCnaType, verbose){
+  vm(as.character(sys.call()[1]), verbose, 1)
   . <- NULL
-  ## check if class is GRanges
-  # if(!is(somCna, "GRanges")){
-  #   stop(
-  #     "input somCna must be a GRanges object; given input appears to be: ", 
-  #     class(somCna))
-  # } else if(
-  #   !(
-  #     (
-  #       #"tcn" %in% names(elementMetadata(somCna))|
-  #      any(allowed_inputs("colnames_tcn") %in% nm_md(somCna))|
-  #      !is.null(colnameTcn)
-  #      )&
-  #     (
-  #      # "cna_type" %in% names(elementMetadata(somCna))|
-  #       any(allowed_inputs("colnames_cna_type") %in% nm_md(somCna))|
-  #      !is.null(colnameCnaType)
-  #      )
-  #   )
-  #   ){
-  #   stop("input somCna requires the following metadata columns: \'tcn\'",
-  #            "and \'cna_type\'",
-  #            "please rename relevant metadata or provide metadata colname by",
-  #            "colnameTcn or colnameCnaType")
-  #} else {
   somCna <- general_gr_checks(somCna, "scna", "somCna")
-  
-  # if(!is.null(colnameTcn)){
-  #   somCna$tcn <- elementMetadata(somCna)[,colnameTcn]
-  # }
-  # if(!is.null(colnameTcn)){
-  #   somCna$cna_type <- elementMetadata(somCna)[,colnameCnaType]
-  # }
   somCna$tcn_assumed <- FALSE
+  ## check if there are segments without cna_type annotation
   if(sum(is.na(elementMetadata(somCna)[,"cna_type"]))>0){
     warning("cna_type column of input somCna contains", 
             sum(is.na(elementMetadata(somCna)[,"cna_type"])),
@@ -163,7 +154,9 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
     elementMetadata(somCna)[,"cna_type"][
       which(
         is.na(elementMetadata(somCna)[,"cna_type"]))] <- NA
-  } 
+  }
+  ## for male samples the gonosomes are hemizygous, we treat them like autosomal
+  ## region with LOH, therefore we annotate LOH to the cna_type column
   if(sex=="male"&str_detect(
     paste(as.character(seqnames(somCna)), collapse=" "), "X|Y")){
     ## if true, the sample is male and has Gonosomal regions
@@ -174,6 +167,7 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
           as.character(seqnames(somCna)) %in% c("X", "Y"))]$cna_type,
         ";LOH")
   }
+  ## if CNA gaps should be assumed to ploidy
   if(assumeSomCnaGaps==TRUE){
     if(sum(is.na(elementMetadata(somCna)[,"tcn"]))>0){
       warning("tcn column of input somCna contains", 
@@ -189,6 +183,7 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
     new_somCna <- insert_missing_cnv_regions(somCna, geneModel, 
                                              sex, ploidy)
   } else {
+  ## if cna gaps should not be assumed, missing tcn segments will be excluded
     if(sum(is.na(elementMetadata(somCna)[,"tcn"]))>0){
       warning("tcn column of input somCna contains", 
               sum(
@@ -202,11 +197,10 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
     } else {
       new_somCna <- somCna
     }
-    
   }
-  #vm("  - done", verbose, -1)
+  new_somCna$seg_id <- seq(1, length(new_somCna))
+  vm("  - done", verbose, -1)
   return(new_somCna)
-  #}
 }
 
 #' @keywords internal
@@ -433,7 +427,8 @@ allowed_inputs <- function(which_one){
     colnames_ref = c("REF", "ref", "Ref"),
     colnames_alt = c("ALT", "alt","Alt"),
     colnames_tcn = c("TCN", "tcn", "Tcn"),
-    colnames_cna_type = c("cna_type", "CNA_type", "Cna_Type", "CNA_Type")
+    colnames_cna_type = c("cna_type", "CNA_type", "Cna_Type", "CNA_Type"),
+    colnames_all_imb = c("allelic_imbalance", "all_imb", "AI")
   )
   return(type_list[[which_one]])
 }
