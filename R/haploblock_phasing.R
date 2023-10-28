@@ -1,19 +1,25 @@
 phase_per_variant <- function(df_dist, muts_in_hap, verbose, bamDna, bamRna, 
                               purity,
-                              printLog){
-  func_start(sys.call(), verbose)
+                              printLog, phasing_type){
+  func_start(verbose)
+  ##prind(df_dist)
+  #prind(0)
   phased_per_mut_full <- lapply(unique(df_dist$mut_id), function(MUT_ID){
+    
     df_dist_mut <- df_dist %>%
                      filter(mut_id==MUT_ID)
-    #print(df_dist_mut)
+    ##prind(df_dist_mut)
     high_conf_result <- FALSE
     i <- 1
     phased_muts <- tibble()
     ## only for documentation
     sub_status_list <- tibble()
     while(high_conf_result==FALSE&i<=nrow(df_dist_mut)){
+      #prind(1)
       comb <- df_dist_mut[i,]
-      #print(comb)
+      #prind(MUT_ID)
+      #prind(comb)
+      #prind(muts_in_hap)
       sub_comb <- bind_rows(
                     muts_in_hap %>% 
                       filter(mut_id==comb$mut_id) %>%
@@ -30,14 +36,20 @@ phase_per_variant <- function(df_dist, muts_in_hap, verbose, bamDna, bamRna,
         make_phasing_combinations() %>%
         ## THIS IS VERY IMPORTANT; FOR SOME REASON THE TRANSITION FROM FACTOR TO CHARACTERE IN THE NEXT FUNCTION CAUSES A -1 FOR THE CHROMOSOMSE!!!!!!
         mutate(chr1=as.character(chr1), chr2=as.character(chr2))
-      #print(sub_comb)
+      append_loglist(phasing_type, "phasing of", sub_comb[["comb_id"]], "distance:", sub_comb[["dist"]])
+      #prind(sub_comb)
  ## the function classify_reads is usually used inside of apply()
 ## thats why the input needs to be adjusted in the format of apply iterations:
       comb_vec <- as.character(sub_comb) %>% set_names(nm=names(sub_comb))
-      #print(comb_vec)
-      res <- classify_reads(comb_vec, bamDna, bamRna, verbose)
+      #prind(comb_vec)
       
+      res <- classify_reads(comb_vec, bamDna, bamRna, verbose)
+      #prind(2)
       if(nrow(res)!=0){
+        #prind(3)
+        #prind(res)
+        append_loglist(nrow(res), 
+                       "reads / read-pairs covering both positions")
         sub_status_combination <- classify_combination(res,
                                                        purity,
                                                        printLog,
@@ -50,15 +62,18 @@ phase_per_variant <- function(df_dist, muts_in_hap, verbose, bamDna, bamRna,
         sub_status_list <- bind_rows(sub_status_list,
                                      sub_status_combination %>% 
                                        mutate(comb=comb$comb_id))
-        #print(sub_status_list)
+        ##prind(sub_status_list)
+        #prind(1)
         if(!sub_status_combination$status=="null"){
+          #prind(comb)
+          
           phased <- tibble(mut_id=comb$mut_id,
                            gt=get_genotype(comb$gt, 
                              sub_status_combination$status))
           phased_muts <- bind_rows(phased_muts, phased)
           high_conf_result <- TRUE
           local_haploblock_phasing_exit <- paste0(comb$mut_id, 
-                                                  ": done")
+                                                  ": completed")
         } else {
           local_haploblock_phasing_exit <- paste0(comb$mut_id, 
                                                   ": phasing status null")
@@ -68,20 +83,21 @@ phase_per_variant <- function(df_dist, muts_in_hap, verbose, bamDna, bamRna,
                                                 ": no covering reads")
       }
       i <- i +1 
+      append_loglist(local_haploblock_phasing_exit)
     } 
     return(list(phased_muts, sub_status_list, local_haploblock_phasing_exit)) 
   }) 
-  vm("  - done", verbose, -1)
+  func_end(verbose)
   return(phased_per_mut_full)
 }
 annotate_haploblocks_to_variants <- function(df_gene, gr_obj, verbose){
-  func_start(sys.call(), verbose)
+  func_start(verbose)
   ## annotate to df_gene in which haploblock the variant is located, 0 means no 
   ## haploblock
   ## first check if object is somCna or haploBlocks
-  prind(1,debug)
+  ##prind(1,debug)
   id_col <- str_match(nm_md(gr_obj), "hap_id|seg_id") %>% .[which(!is.na(.))]
-  prind(1,debug)
+  ##prind(1,debug)
   df_gene_hap <- apply(df_gene, 1, function(mut){
     gr_roi <- GenomicRanges::GRanges(paste0(mut[["chr"]], ":", 
                                             as.numeric(mut[["pos"]]), "-",
@@ -94,7 +110,7 @@ annotate_haploblocks_to_variants <- function(df_gene, gr_obj, verbose){
     }
     return(as_tibble(t(mut)) %>% mutate(!!id_col:=det_hap_id))
   }) %>% bind_rows()
-  prind(1,debug)
+  ##prind(1,debug)
   func_end(verbose)
   return(df_gene_hap)
 }
@@ -145,8 +161,8 @@ phase_against_phased_snps <- function(muts_in_hap,
                                       phased_snps_in_haploblock_ids, 
                                       verbose, 
                                       bamDna, bamRna, purity,
-                                      printLog, geneDir, distCutOff){
-  vm(as.character(sys.call()[1]), verbose, 1)
+                                      printLog, phasingDir, phasing_type, distCutOff){
+  func_start(verbose)
   name_id_col <- str_match(names(muts_in_hap), "hap_id|seg_id") %>% .[!is.na(.)]
   HAP_ID <- unique(muts_in_hap[[name_id_col]])
   log_phasing_results <- NULL
@@ -159,16 +175,17 @@ phase_against_phased_snps <- function(muts_in_hap,
     filter(dist<distCutOff) %>%
     arrange(dist) %>%
     mutate(comb_id=paste(mut_id, snp_id, sep="-"))
- prind(df_dist)
-  store_log(geneDir, df_dist, paste0("dist_df_hb_", 
+ ##prind(df_dist)
+  store_log(phasingDir, df_dist, paste0("dist_df_hb_", 
                                      HAP_ID, ".tsv"))
   ## check if at least two main variants are present, otherwise phasing
   ## does not make any sense
   if(length(unique(df_dist$mut_id))>1){
+    append_loglist("at least 2 variants closer to SNPs than distCutOff")
     phased_per_mut_full <- phase_per_variant(df_dist, muts_in_hap, verbose, 
                                              bamDna, bamRna, purity,
-                                             printLog)
-    #print(phased_per_mut_full)
+                                             printLog, phasing_type)
+    ##prind(phased_per_mut_full)
     phased_per_mut <- bind_rows(lapply(phased_per_mut_full, nth, 1))
     local_haploblock_phasing_exit <- lapply(phased_per_mut_full, nth, 3) %>% 
       unlist() %>% paste(collapse = "; ")
@@ -179,9 +196,9 @@ phase_against_phased_snps <- function(muts_in_hap,
         lapply(phased_per_mut_full, nth, 2)) %>%
         mutate(hap_id=HAP_ID)
       
-      store_log(geneDir, log_phasing_results, paste0("log_phasing_hb_", 
+      store_log(phasingDir, log_phasing_results, paste0("log_phasing_hb_", 
                                                      HAP_ID, ".tsv"))
-      store_log(geneDir, phased_per_mut, paste0("phased_per_mut_hb_", 
+      store_log(phasingDir, phased_per_mut, paste0("phased_per_mut_hb_", 
                                                 HAP_ID, ".tsv"))
       status_per_comb <- 
         define_status_for_main_combination(phased_per_mut, 
@@ -191,11 +208,12 @@ phase_against_phased_snps <- function(muts_in_hap,
     }
   } else {
     local_haploblock_phasing_exit <- 
-      "only one mut closer than distCutOff to snp"
+      "only one mut closer than distCutOff to SNP"
+    append_loglist(local_haploblock_phasing_exit)
     #vm("only one mut closer than dist limit to snp", verbose)
     status_per_comb <- NULL
   }
-  vm("  - done", verbose, -1)
+  func_end(verbose)
   return(list(status_per_comb, log_phasing_results, 
               local_haploblock_phasing_exit))
 }
@@ -213,35 +231,54 @@ perform_haploblock_phasing <- function(all_combinations, direct_phasing, df_gene
                                     purity, distCutOff,
                                     printLog, verbose,
                                     geneDir, refGen){
-  func_start(sys.call(), verbose)
-  per_haploblock <- log_phasing_results <- combined_phasing <- NULL
+  func_start(verbose)
+  per_haploblock <- log_phasing_results <- NULL
+  phasing_type <- "haploblock"
+  ## pre define empty result
+  combined_phasing <- list(
+    status=fill_phasing_status(all_combinations, NULL, 
+                               phasing_type, verbose),
+    info=NULL)
+  
   do_haploblock_phasing <- eval_direct_results(direct_phasing, phasedVcf,
                                                haploBlocks)
   if(do_haploblock_phasing){
-    catt(printLog, 4, "Initializing level 2 phasing")
+    append_loglist("Initializing haploblock phasing")
+    if(!is.null(geneDir)){
+      phasingDir <- file.path(geneDir, phasing_type)
+      dir.create(phasingDir)
+    }
     df_gene_hap <- annotate_haploblocks_to_variants(df_gene, haploBlocks, 
                                                     verbose)
     ## check if at least two variants are in the same haploblock
     if(any(df_gene_hap$hap_id > 0)&any(table(
       df_gene_hap[which(df_gene_hap$hap_id>0),]$hap_id
     )>1)){
+      append_loglist("at least 2 variants detected in same haploblock")
       #vm("at least two variants detected in same haploblock", verbose, 1)
       relevant_haploblocks <- table(df_gene_hap$hap_id) %>% 
         .[which(.>1)] %>% names() %>% .[which(!.=="0")]
       ## iterate over haploblocks
       per_haploblock <- lapply(relevant_haploblocks, function(HAP_ID){
+        append_loglist("checking haploblock:", HAP_ID)
         log_phasing_results <- NULL
         region_to_load <- haploBlocks[which(haploBlocks$hap_id==HAP_ID)]
         loaded_vcf <-  loadVcf(phasedVcf, unique(df_gene$chr), 
                                region_to_load, refGen, verbose) 
-        #prind(loaded_vcf, debug)
+        ###prind(loaded_vcf, debug)
+        append_loglist(length(loaded_vcf), "SNPs in haploblock")
         phased_snps_in_haploblock <-  as_tibble(loaded_vcf) %>%
+          ## 
           filter(str_detect(gt, "\\|")) %>%
-          filter(!gt=="1|1") 
+          filter(!gt=="1|1") %>%
+          filter(!as.numeric(start) %in% df_gene$pos)
+        append_loglist(nrow(phased_snps_in_haploblock), "phased &  heterozygous")
+        #prind(phased_snps_in_haploblock)
         if(!nrow(phased_snps_in_haploblock)==0){
           phased_snps_in_haploblock_ids <- phased_snps_in_haploblock %>%
             mutate(snp_id=paste0("s", c(1:nrow(.))))
-          store_log(geneDir, phased_snps_in_haploblock_ids,
+          #print(phased_snps_in_haploblock_ids)
+          store_log(phasingDir, phased_snps_in_haploblock_ids,
                     paste0("all_snps_hb_", 
                            HAP_ID, ".tsv"))
           ## get every mutation located in the haploblock
@@ -251,50 +288,49 @@ perform_haploblock_phasing <- function(all_combinations, direct_phasing, df_gene
                                     phased_snps_in_haploblock_ids, 
                                                 verbose, 
                                                 bamDna, bamRna, purity,
-                                                printLog, geneDir, distCutOff)         #vm("no phased snps/heterozygous SNPS in haploblock", verbose)
-          #prind(phasing_result, debug)
+                                                printLog, phasingDir, 
+                                    phasing_type, distCutOff)         #vm("no phased snps/heterozygous SNPS in haploblock", verbose)
+          ###prind(phasing_result, debug)
           #local_haploblock_phasing_exit <- phasing_result[[3]]
         } else {
           ## hier empty
           local_haploblock_phasing_exit <- 
             paste("no phased snps in haploblock:", HAP_ID)
-          phasing_result <- list(NULL, NULL, local_haploblock_phasing_exit)
+          phasing_result <- list(tibble(), NULL, local_haploblock_phasing_exit)
         }
         return(phasing_result)
       })
-      prind(per_haploblock, debug)
-      combined_phasing <- finalize_phasing_result(per_haploblock, "haploblock", 
+      ##prind(per_haploblock, debug)
+      combined_phasing <- finalize_phasing_result(per_haploblock, phasing_type, 
                                                   all_combinations, verbose)
+      global_haploblock_phasing_exit <- combined_phasing[[3]]
     } else {
       global_haploblock_phasing_exit <- "less than two variants in same haploblock"
     }
   } else {
     global_haploblock_phasing_exit <- "do_hap_phasing = FALSE"
   }
-  if(is.null(combined_phasing)){
-    combined_phasing <- list(
-      status=fill_phasing_status(all_combinations, NULL, 
-                                 "haploblock", verbose),
-      info=NULL,
-      exit=global_haploblock_phasing_exit
-    )
+  append_loglist(global_haploblock_phasing_exit)
+  #print(combined_phasing$status)
+  if(nrow(combined_phasing$status)==0){
+    combined_phasing$status <- fill_phasing_status(all_combinations, NULL, 
+                                 phasing_type, verbose)
   }
+  full_phasing <- append(combined_phasing[c(1,2)], 
+                         list(exit=global_haploblock_phasing_exit))
   func_end(verbose)
-  return(combined_phasing)
+  return(full_phasing)
 }
 
 finalize_phasing_result <- function(per_hapseg, phasing_type, all_combinations,
                                     verbose){
-  func_start(sys.call(), verbose)
-  combined_status_per_hapseg <- combined_phasing_per_hapseg <- NULL
-  prind(per_hapseg, debug)
-  prind(1,debug)
-  prind(compact(per_hapseg), debug)
-
-  #prind(status_per_hapseg, debug)
-  #if(!is.null(status_per_hapseg)){
+  func_start(verbose)
+  combined_phasing_per_hapseg <- NULL
+  combined_status_per_hapseg <- fill_phasing_status(all_combinations, 
+                                                      NULL, 
+                                                      phasing_type, verbose)
   if(length(compact(per_hapseg))>0){  
-    prind(2,debug)  
+    ##prind(2,debug)  
     status_per_hapseg <- lapply(per_hapseg, nth, 1) %>% 
       compact() 
     if(length(status_per_hapseg)>0){
@@ -303,32 +339,28 @@ finalize_phasing_result <- function(per_hapseg, phasing_type, all_combinations,
         select(comb, status, nstatus, conf) %>%
         mutate(phasing=phasing_type) 
    
-    }
+    } 
     phasing_per_hapseg <- lapply(per_hapseg, nth, 2) %>% 
         compact()       
     if(length(phasing_per_hapseg)>0){ 
-      #prind(5,debug)
+      ###prind(5,debug)
       combined_phasing_per_hapseg <- phasing_per_hapseg %>%
         bind_rows() %>%
         mutate(phasing=phasing_type)    
     }  
-  } else {
-    prind(3,debug)
-    combined_status_per_hapseg <- fill_phasing_status(all_combinations, 
-                                                      NULL, 
-                                                      phasing_type, verbose)
-  }
-  prind(4,debug)
+  } 
+  ##prind(4,debug)
 
-  #prind(phasing_per_hapseg, debug)
+  ###prind(phasing_per_hapseg, debug)
   exit_per_hapseg <- lapply(per_hapseg, nth, 3) %>% 
     unlist() %>% paste(collapse = "; ")
   
-  prind(6,debug)
+  ##prind(6,debug)
   func_end(verbose)
   return(list(status=combined_status_per_hapseg,
             info=combined_phasing_per_hapseg,
-            exit=exit_per_hapseg))
+            exit=tibble(type=phasing_type,
+                        info=exit_per_hapseg)))
 }
 
 

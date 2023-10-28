@@ -1,14 +1,13 @@
 perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity, 
                                    verbose, printLog, showReadDetail, geneDir){
-  func_start(sys.call(), verbose)
+  func_start(verbose)
   phasing_info <-  apply(all_combinations, 1, function(main_comb){
-    catt(printLog, 2 ,c("combination:", main_comb[["comb_id"]]))
-    #return_null_result <- TRUE
-    RESULT <- full_read_info <- NULL
+    append_loglist("direct phasing of combination:", main_comb[["comb_id"]],
+                   "distance:", main_comb[["dist"]])
+    classified_main_comb <- full_read_info <- NULL
     main_classified_reads <- classify_reads(main_comb, bamDna, bamRna, verbose)
-    catt(printLog, 3, 
-         c(nrow(main_classified_reads), 
-           "reads / read-pairs overlapping both positions"))
+    append_loglist(nrow(main_classified_reads), 
+           "reads / read-pairs covering both positions")
     if(nrow(main_classified_reads)!=0){
       #return_null_result <- FALSE
       if(showReadDetail==TRUE){
@@ -16,7 +15,7 @@ perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity,
           mutate(comb=main_comb[['comb_id']]), 
           paste0("classified_reads_",main_comb[['comb_id']],".tsv"))
       } 
-      RESULT <- classify_combination(main_classified_reads,
+      classified_main_comb <- classify_combination(main_classified_reads,
                                      purity,
                                      printLog,
                                      verbose
@@ -28,17 +27,8 @@ perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity,
           comb=main_comb[['comb_id']],
           phasing="direct"
         ) 
-      if(RESULT$status!="null"){
-        #return_null_result <- FALSE
-        catt(printLog, 3, c("status:", RESULT$status))
-      } else {
-        catt(printLog, 3, "status can not be defined")
-      }
     }   
-    # if(return_null_result==TRUE){
-    #   RESULT <- return_null_result(main_comb, bamRna, "test")
-    # }
-    return(RESULT)
+    return(classified_main_comb)
   }) %>%
     compact() %>%
     bind_rows() 
@@ -53,5 +43,5 @@ perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity,
   func_end(verbose)
   return(list(status=filled_phasing_status,
               info=phasing_info,
-              exit="test"))
+              exit=tibble(phasing="direct", info="test")))
 }

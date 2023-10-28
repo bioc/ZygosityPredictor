@@ -84,19 +84,18 @@ predict_per_variant <- function(purity,
     call_depth <<- 0    
     somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                            assumeSomCnaGaps, colnameTcn, 
-                           colnameCnaType, verbose) 
+                           colnameCnaType, verbose)  
+    purity <- check_purity(purity)
+    sex <- check_sex(sex)
   }
-  func_start(sys.call(), verbose)
+  func_start( verbose)
   #vm(as.character(sys.call()[1]), verbose, 1)
   ## check input for valid format
   somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
   germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
-  purity <- check_purity(purity)
   ploidy <- check_ploidy(ploidy)
-  sex <- check_sex(sex)
   geneModel <- check_gr_gene_model(geneModel, is_pre_eval)
   assumeSomCnaGaps <- check_opt_assgap(assumeSomCnaGaps, ploidy)
-
   includeIncompleteDel <- check_opt_incdel(includeIncompleteDel, ploidy)
   includeHomoDel <- check_opt_incdel(includeHomoDel, ploidy)
   if(is.null(geneModel)){
@@ -158,7 +157,7 @@ predict_per_variant <- function(purity,
                 df_incompletedels=df_incompletedels,
                 combined_uncovered=combined_uncovered)   
   }
-  vm("  - done", verbose, -1)
+  func_end()
   return(full_eval)
 }
 #' predicts zygosity of a set of genes of a sample
@@ -313,6 +312,7 @@ predict_zygosity <- function(purity,
                              phasedVcf=NULL,
                              distCutOff=5000,
                              verbose=FALSE,
+                             debug=FALSE,
                              logDir=NULL,
                              refGen="hg19"
 ){
@@ -320,12 +320,15 @@ predict_zygosity <- function(purity,
     gene <- final_phasing_info <- combined_read_details <-  final_output <-
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
     som_covered <- germ_covered <- final_phasing_info <- 
-    combined_snp_phasing <- evaluation_per_gene <- NULL
-  call_depth <<- 0
-  func_start(sys.call(), verbose)
+    combined_snp_phasing <- evaluation_per_gene <- log_list_per_gene <- NULL
+  ## define global debugging variable
+  set_global_variables(debug, verbose, printLog)
+  func_start()
   somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                           assumeSomCnaGaps, colnameTcn, 
                           colnameCnaType, verbose)
+  purity <- check_purity(purity)
+  sex <- check_sex(sex)
   evaluation_per_variant_pre <- predict_per_variant(purity, 
                                                     sex,
                                                     somCna, 
@@ -350,7 +353,7 @@ predict_zygosity <- function(purity,
       vcf <- check_vcf(vcf) 
       haploBlocks <- check_haploblocks(haploBlocks)
       phasedVcf <- check_vcf(phasedVcf)
-      result_list <- lapply(
+      per_gene <- lapply(
         unique(evaluation_per_variant$gene), 
         predict_zygosity_genewise, 
         evaluation_per_variant, 
@@ -359,6 +362,7 @@ predict_zygosity <- function(purity,
         showReadDetail,
         printLog,
         purity,
+        sex,
         vcf,
         haploBlocks,
         phasedVcf,
@@ -367,25 +371,29 @@ predict_zygosity <- function(purity,
         logDir,
         refGen,
         somCna)
-      final_result_list <- lapply(result_list, nth, n=2) %>% compact()
-      if(length(final_result_list)!=0){
-        final_phasing_info <- bind_rows(final_result_list) 
-        final_output <- lapply(final_result_list, nth, n=1) %>% 
+      full_eval_per_gene <- lapply(per_gene, nth, n=2) %>% compact()
+      log_list_per_gene <- lapply(per_gene, nth, n=3)
+      if(length(full_eval_per_gene)!=0){
+        full_phasing_info <- lapply(full_eval_per_gene, nth, n=2) %>% 
+          compact() %>% 
+          bind_rows() 
+        combined_eval_per_gene <- lapply(full_eval_per_gene, nth, n=1) %>% 
           bind_rows() %>%
           select(gene, n_mut, status, conf, eval_time_s, info)
       } 
     }
     evaluation_per_gene <- bind_incdel_to_final_eval(
       evaluation_per_variant_pre$df_incompletedels,
-      final_output)
+      combined_eval_per_gene)
   }
   result_list <- list(
     eval_per_variant=evaluation_per_variant,
-    eval_per_gene=evaluation_per_gene,
-    phasing_info=final_phasing_info,
-    uncovered_input=evaluation_per_variant_pre$combined_uncovered
+    eval_per_gene=combined_eval_per_gene,
+    phasing_info=full_phasing_info,
+    uncovered_input=evaluation_per_variant_pre$combined_uncovered,
+    log_list_per_gene=log_list_per_gene
   ) %>%
     compact()
-  func_end(verbose)
+  func_end()
   return(result_list)
 } 

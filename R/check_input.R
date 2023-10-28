@@ -141,7 +141,7 @@ check_chr <- function(chr){
 check_somCna <- function(somCna, geneModel, sex, ploidy,
                          assumeSomCnaGaps, colnameTcn, 
                          colnameCnaType, verbose){
-  vm(as.character(sys.call()[1]), verbose, 1)
+  func_start()
   . <- NULL
   somCna <- general_gr_checks(somCna, "scna", "somCna")
   somCna$tcn_assumed <- FALSE
@@ -199,7 +199,7 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
     }
   }
   new_somCna$seg_id <- seq(1, length(new_somCna))
-  vm("  - done", verbose, -1)
+  func_end()
   return(new_somCna)
 }
 
