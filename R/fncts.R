@@ -459,37 +459,118 @@ make_read_overview <- function(read_start, seq, cigar, qual){
   full <- left_join(comb, rel, by="id")
   return(full)
 }
-make_read_overview_new <- function(read_start, seq, cigar, qual){
-    ## parse cigar string according to query
-  cigq <- GenomicAlignments::cigarRangesAlongQuerySpace(cigar,
-                                                        with.ops = T)%>%
-    unlist() %>% as.data.frame() %>%
-    set_names(.,nm=paste0(names(.), "_q"))
-  ## parse cigar string according to reference
-  cigr <- GenomicAlignments::cigarRangesAlongReferenceSpace(cigar,
-                                                        with.ops = F)%>%
-    unlist() %>% as.data.frame() %>%
-    set_names(.,nm=paste0(names(.), "_r"))
-  ## combine them and extract relevant bases and quality from sequence
-  raw_cigs_new <- bind_cols(cigq, cigr) %>%
-    rowwise() %>%
-    mutate(seq=str_sub(seq, start=start_q, end=end_q) %>% na_if(""),
-           qual=str_sub(qual, start=start_q, end=end_q) %>% na_if(""),
-           width=max(width_q, width_r),
-           map_start=read_start+end_r-width,
-           map_end=read_start+end_r-1) %>%
-    select(width, type=names_q, seq, qual, map_start, map_end, start=start_r, 
-           end=end_r)
-  return(raw_cigs_new)
-}
+# make_read_overview_new <- function(read_start, seq, cigar, qual){
+#   func_start()
+#   # print(cigar)
+#   # print(seq)
+#   # print(qual)
+#   # print(read_start)
+#     ## parse cigar string according to query
+#   cigq <- GenomicAlignments::cigarRangesAlongQuerySpace(cigar,
+#                                                         with.ops = T) %>%
+#     unlist() %>% as.data.frame() %>%
+#     set_names(.,nm=paste0(names(.), "_q"))
+#   ## parse cigar string according to reference
+#   cigr <- GenomicAlignments::cigarRangesAlongReferenceSpace(cigar,
+#                                                         with.ops = F) %>%
+#     unlist() %>% as.data.frame() %>%
+#     set_names(.,nm=paste0(names(.), "_r"))
+#   ## combine them and extract relevant bases and quality from sequence
+#   raw_cigs_new <- bind_cols(cigq, cigr) %>%
+#     #rowwise() %>%
+#     mutate(
+#       
+#       seq=str_sub(seq, start=start_q, end=end_q) %>% na_if(""),
+#       qual=str_sub(qual, start=start_q, end=end_q) %>% na_if(""),
+#            
+#            
+#            width=pmax(width_q, width_r),
+#            
+#            map_start=read_start+end_r-width,
+#            map_end=read_start+end_r-1) %>%
+#     select(width, type=names_q, seq, qual, map_start, map_end, start=start_r,
+#            end=end_r)
+#   func_end()
+#   return(raw_cigs_new)
+# }
+# 
+# make_read_overview_new <- function(read_start, seq, cigar, qual,  mapq, origin){
+#   func_start()
+#   mate <- c(1,2)
+# # print(cigar)
+#   ## parse cigar string according to query
+#   cigq <- GenomicAlignments::cigarRangesAlongQuerySpace(cigar,
+#                                                         with.ops = T) 
+#   ## parse cigar string according to reference
+#   cigr <- GenomicAlignments::cigarRangesAlongReferenceSpace(cigar,
+#                                                             with.ops = F) 
+#   raw_cigs <- lapply(mate, function(i){
+#     cigq_start <- GenomicAlignments::start(cigq[[i]])
+#     cigq_end <- GenomicAlignments::end(cigq[[i]])
+#     cigq_len <- length(cigq_start)
+#     
+#     cigr_start <- GenomicAlignments::start(cigr[[i]])
+#     cigr_end <- GenomicAlignments::end(cigr[[i]])
+#     seqq <- str_sub(seq[i],
+#                     start=cigq_start,
+#                     end=cigq_end) %>% na_if("")
+#     qualq <- str_sub(qual[i],
+#                      start=cigq_start,
+#                      end=cigq_end) %>% na_if("")
+#     width=pmax(GenomicAlignments::width(cigq[[i]]), 
+#                GenomicAlignments::width(cigr[[i]]))
+#     map_start=read_start[i]+cigr_end-width
+#     map_end=read_start[i]+cigr_end-1
+#     
+#     raw_cigs_new <- data.frame(
+#       width=width,
+#       type=names(cigq[[i]]),
+#       seq=seqq,
+#       qual=qualq,
+#       map_start=map_start,
+#       map_end=map_end,
+#       start=cigr_start,
+#       end=cigr_end,
+#       mate=mate[i],
+#       mapq=mapq[i],
+#       origin=origin[i]
+#       )
+#         
+#   }) %>%
+#     bind_rows() %>%
+#   mutate(id=c(1:nrow(.)))
+#   func_end()
+#   return(raw_cigs)
+# }
+
+
+
+
+
+
+
+# make_read_overview_new <- function(read_start, seq, cigar, qual) {
+#   func_start()
+#   cigq <- GenomicAlignments::cigarRangesAlongQuerySpace(cigar, with.ops = TRUE)
+#   cigr <- GenomicAlignments::cigarRangesAlongReferenceSpace(cigar, with.ops = FALSE)
+#   max_width <- pmax(cigq$width, cigr$width)
+#   
+#   raw_cigs_new <- data.frame(
+#     width = max_width,
+#     type = cigq$type,
+#     seq = ifelse(max_width > 0, str_sub(seq, cigq$start, cigq$end), NA),
+#     qual = ifelse(max_width > 0, str_sub(qual, cigq$start, cigq$end), NA),
+#     map_start = read_start + cigr$end - max_width,
+#     map_end = read_start + cigr$end - 1,
+#     start = cigr$start,
+#     end = cigr$end
+#   )
+#   func_end()
+#   return(raw_cigs_new)
+# }
 
 extract_subseq <- function(ref_pos, element_mut, parsed_read, 
                            length_indel, string){
-  # #prind(1parsed_read)
-  # #prind(1str_sub(element_mut[[string]], start=ref_pos-element_mut$map_start+1, 
-  #               end=-1))
-  # #prind(1      paste(parsed_read[seq(as.numeric(element_mut$id)+1, 
-  #                                   nrow(parsed_read), 1)][[string]], collapse=""))
   pos_in_seq <- ref_pos-element_mut$map_start+1
   subseq_in_element <- str_sub(element_mut[[string]], start=pos_in_seq, 
                                end=-1)
@@ -497,14 +578,7 @@ extract_subseq <- function(ref_pos, element_mut, parsed_read,
     pull(all_of(string)) %>%
     na.omit() %>%
     paste(collapse="")
-  
   full_remaining <- paste0(subseq_in_element, subseq_in_following_elements)
- # #prind(1parsed_read)
-#  #prind(1subseq_in_element)
-#  #prind(1subseq_in_following_elements)
-#  #prind(1full_remaining)
- # #prind(1length_indel)
-  
   return(str_sub(full_remaining, start=1, end=length_indel))
 }
 
@@ -621,9 +695,15 @@ extract_deletion <- function(ref_pos, parsed_read, element_mut, length_del){
 }
 
 cigar_element <- function(parsed_read, ref_pos){
-  parsed_read %>% rowwise() %>%
-    filter(between(ref_pos, map_start, map_end)) %>%
-    .[1,] %>% return()
+  func_start()
+  # cigel <- parsed_read %>% #rowwise() %>%
+  #   #.[which(ref_pos, .$map_start, .$map_end),] %>%
+  #   filter(between(ref_pos, map_start, map_end)) %>%
+  #   .[1,] #%>% return()
+  cigel <- parsed_read[which(between(ref_pos, parsed_read$map_start, parsed_read$map_end)),] %>%
+    .[1,]
+  func_end()
+  return(cigel)
 }
 
 extract_base_at_refpos <- function(parsed_read, ref_pos, class, ref_alt, ref_ref){
@@ -731,25 +811,113 @@ check_mut_presence <- function(read_structure, ref_pos,
 }
 parse_cigar <- function(bam, qname){
   func_start()
-  paired_reads <- bam[which(bam$qname==qname)] %>%
-    .[which(as.character(seqnames(.)) %in%
-              allowed_inputs("chrom_names"))] %>%
-    as_tibble() %>%
-    rownames_to_column("mate") %>%
-  #parsed_read <- 
-    apply(., 1, function(READ){
-    make_read_overview_new(as.numeric(READ[["start"]]),
-                           READ[["seq"]],
-                           READ[["cigar"]],
-                           READ[["qual"]]) %>%
-      mutate(mate=READ[["mate"]],
-             mapq=READ[["mapq"]],
-             origin=READ[["origin"]])
-  }) %>% bind_rows()  %>% 
-    rownames_to_column("id") #%>%
+  paired_reads <- bam[which(bam$qname==qname)] 
+  read_start <- GenomicAlignments::start(paired_reads)
+  seq <- as.character(paired_reads$seq)
+  cigar <- paired_reads$cigar
+  qual <- as.character(paired_reads$qual)
+  mate <- c(1,2)
+  ## parse cigar string according to query
+  cigq <- GenomicAlignments::cigarRangesAlongQuerySpace(cigar,
+                                                        with.ops = T) 
+  ## parse cigar string according to reference
+  cigr <- GenomicAlignments::cigarRangesAlongReferenceSpace(cigar,
+                                                            with.ops = F) 
+  raw_cigs <- lapply(mate, function(i){
+    cigq_start <- GenomicAlignments::start(cigq[[i]])
+    cigq_end <- GenomicAlignments::end(cigq[[i]])
+    cigq_len <- length(cigq_start)
+    cigr_start <- GenomicAlignments::start(cigr[[i]])
+    cigr_end <- GenomicAlignments::end(cigr[[i]])
+    seqq <- str_sub(seq[i],
+                    start=cigq_start,
+                    end=cigq_end) %>% na_if("")
+    qualq <- str_sub(qual[i],
+                     start=cigq_start,
+                     end=cigq_end) %>% na_if("")
+    width=pmax(GenomicAlignments::width(cigq[[i]]), 
+               GenomicAlignments::width(cigr[[i]]))
+    map_start=read_start[i]+cigr_end-width
+    map_end=read_start[i]+cigr_end-1
+    raw_cigs_new <- data.frame(
+      width=width,
+      type=names(cigq[[i]]),
+      seq=seqq,
+      qual=qualq,
+      map_start=map_start,
+      map_end=map_end,
+      start=cigr_start,
+      end=cigr_end,
+      mate=mate[i],
+      mapq=paired_reads$mapq[i],
+      origin=paired_reads$origin[i]
+    )
+  }) %>%
+    bind_rows() %>%
+    mutate(id=c(1:nrow(.)))
   func_end()
-  return(paired_reads)
+  return(raw_cigs)
 }
+# parse_cigar_old <- function(bam, qname){
+#   func_start()
+#   paired_reads <- bam[which(bam$qname==qname)] %>%
+#     .[which(as.character(seqnames(.)) %in%
+#               allowed_inputs("chrom_names"))] %>%
+#     as_tibble() %>%
+#     rownames_to_column("mate") #%>%
+#   vm("+-end", T, -1)
+#   vm("2222", T, 1)
+#   # paired_reads_dt <- as.data.table(paired_reads)
+#   # 
+#   # # Perform the expensive operation outside of data.table
+#   # overview_list <- lapply(1:nrow(paired_reads_dt), function(i) {
+#   #   make_read_overview_new(
+#   #     as.numeric(paired_reads_dt[i, start]),
+#   #     paired_reads_dt[i, seq],
+#   #     paired_reads_dt[i, cigar],
+#   #     paired_reads_dt[i, qual]
+#   #   )
+#   # })
+#   # 
+#   # # Combine the list into a data.table
+#   # overview_dt <- rbindlist(overview_list)
+#   # 
+#   # # Add the mate, mapq, and origin columns
+#   # parsed_read <- cbind(overview_dt, paired_reads_dt[, .(mate, mapq, origin)])
+#   # 
+#   # # If you want the result as a data frame
+#   # parsed_read <- as.data.frame(parsed_read)
+#   # parsed_read <- lapply(1:nrow(paired_reads), function(i) {
+#   #   READ <- paired_reads[i, ]
+#   #   make_read_overview_new(
+#   #     as.numeric(READ[["start"]]),
+#   #     READ[["seq"]],
+#   #     READ[["cigar"]],
+#   #     READ[["qual"]]
+#   #   ) %>%
+#   #     mutate(
+#   #       mate = READ[["mate"]],
+#   #       mapq = READ[["mapq"]],
+#   #       origin = READ[["origin"]]
+#   #     )
+#   # })
+#   parsed_read <-
+#     apply(paired_reads, 1, function(READ){
+#     make_read_overview_old(as.numeric(READ[["start"]]),
+#                            READ[["seq"]],
+#                            READ[["cigar"]],
+#                            READ[["qual"]]) %>%
+#       mutate(mate=READ[["mate"]],
+#              mapq=READ[["mapq"]],
+#              origin=READ[["origin"]])
+#   }) #%>% bind_rows()  %>%
+#   vm("+-end", T, -1)
+#   vm("3333", T, 1)
+#   psdr <- parsed_read %>% bind_rows() %>%
+#     rownames_to_column("id") #%>%
+#   func_end()
+#   return(psdr)
+# }
 evaluate_base <- function(base_info, ref_alt, ref_ref){
   func_start()
   if(base_info$class=="snv"){
@@ -805,7 +973,6 @@ core_tool <- function(qname, bam,
     final_assignment <- case_when(
       sum(mut1_in_read, mut2_in_read)==2 ~ "both",
       sum(mut1_in_read, mut2_in_read)==0 ~ "none",
-      #sum(mut1_in_read, mut2_in_read)<(-5) ~ "skipped",
       mut1_in_read==1 ~ "mut1",
       mut2_in_read==1 ~ "mut2",
       TRUE ~ "dev_var"
