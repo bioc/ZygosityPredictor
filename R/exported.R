@@ -195,8 +195,6 @@ predict_per_variant <- function(purity,
 #' excluded
 #' @param includeIncompleteDel default = TRUE; if FALSE heterzygous deleteions 
 #' are excluded
-#' @param showReadDetail default = FALSE; if TRUE a table is added to the 
-#' output,
 #' @param printLog default = FALSE; if TRUE the gene which is evaluated is 
 #' printed in console, 
 #' containing the query-name of each read which was used to perform 
@@ -231,6 +229,24 @@ predict_per_variant <- function(purity,
 #' should not be tried anymore. As the probability of finding overlapping reads
 #' at such a long distance is very low and the runtime will increase
 #' exponentially.
+#' @param debug logical, default=FALSE; prints output for debugging
+#' @param verbose logical, default=FALSE; prints functions that are called
+#' @param refGen character, default="hg38; relevant if vcf files are provided
+#' for haploblock or imbalance phasing
+#' @param haploBlocks GRanges object containing haploblocks. Haploblocks are
+#' defined as genomic regions in which SNPs are phased to a specific allele.
+#' For example a haploblock could be chr1:1000-10000. This would mean that every
+#' genotype annotation in the format "1|0" or "0|1" of a SNP in this region will 
+#' be used to phase somatic variants and define their genotype
+#' @param logDir character; path to directory where logfiles and detailed infos 
+#' of the run can be stored, if not given, no details will be stored or printed     
+#' @param snpQualityCutOff numeric, default=1; Cutoff to filter for SNPS that 
+#' can be used for phasing                     
+#' @param phasingMode character, default="fast"; if set to full. Even if high 
+#' confidence phasing result could be achieved, following phasing approaches 
+#' will be carried out
+#' 
+#' 
 #' @return A list of dataframes. Those are the evaluation per variant, 
 #' the evaluation per gene and, if performed, the info about the 
 #' haplotype-phasing.
@@ -309,12 +325,13 @@ predict_zygosity <- function(purity,
                              byTcn=TRUE,
                              vcf=NULL,
                              haploBlocks=NULL,
-                             phasedVcf=NULL,
                              distCutOff=5000,
                              verbose=FALSE,
                              debug=FALSE,
                              logDir=NULL,
-                             refGen="hg19"
+                             refGen="hg19",
+                             snpQualityCutOff=1, 
+                             phasingMode="fast"
 ){
   status <- info <- wt_cp <- . <- df_homdels <- evaluation_per_variant <- 
     gene <- final_phasing_info <- combined_read_details <-  final_output <-
@@ -350,9 +367,8 @@ predict_zygosity <- function(purity,
       bamDna <- check_bam(bamDna)
       bamRna <- check_rna(bamRna)
       logDir <- check_logDir(logDir)
-      vcf <- check_vcf(vcf) 
       haploBlocks <- check_haploblocks(haploBlocks)
-      phasedVcf <- check_vcf(phasedVcf)
+      phasedVcf <- check_vcf(vcf)
       per_gene <- lapply(
         unique(evaluation_per_variant$gene), 
         predict_zygosity_genewise, 
@@ -363,14 +379,15 @@ predict_zygosity <- function(purity,
         printLog,
         purity,
         sex,
-        vcf,
         haploBlocks,
         phasedVcf,
         distCutOff, 
         verbose,
         logDir,
         refGen,
-        somCna)
+        somCna,
+        snpQualityCutOff, 
+        phasingMode)
       full_eval_per_gene <- lapply(per_gene, nth, n=2) %>% compact()
       log_list_per_gene <- lapply(per_gene, nth, n=3)
       if(length(full_eval_per_gene)!=0){

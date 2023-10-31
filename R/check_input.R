@@ -344,6 +344,7 @@ check_ploidy <- function(ploidy){
 #' description follows
 #' @importFrom stringr str_detect
 check_sex <- function(sex){
+  #func_start()
   . <- NULL
   allowed_sex <- c("male", "m", "female", "f") %>% c(.,toupper(.))
   if(!sex %in% allowed_sex){
@@ -358,19 +359,23 @@ check_sex <- function(sex){
       return("male")
     }
   }
+  #func_end()
 }
 #' @keywords internal
 #' description follows 
 check_bam <- function(bamDna){
+  #func_start()
   if(file.exists(bamDna)){
     return(bamDna)
   } else {
     stop("input bamDna does not exist")
   }
+  #func_end()
 }
 #' @keywords internal
 #' description follows
 check_vcf <- function(vcf){
+  #func_start()
   if(is.null(vcf)){
     return(NULL)
   } else if(!sum(unlist(lapply(vcf, file.exists)))==length(vcf)){
@@ -385,6 +390,8 @@ check_vcf <- function(vcf){
     })
     return(processed_vcf)
   }
+  #func_end()
+  #return(checked_vcf)
 }
 #' @keywords internal
 #' description follows

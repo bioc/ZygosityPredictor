@@ -1,10 +1,18 @@
 perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity, 
                                    verbose, printLog, showReadDetail, geneDir){
   func_start(verbose)
+  if(!is.null(geneDir)){
+    phasingDir <- file.path(geneDir, "direct")
+    dir.create(phasingDir)
+  }
   phasing_info <-  apply(all_combinations, 1, function(main_comb){
     append_loglist("direct phasing of combination:", main_comb[["comb_id"]],
                    "distance:", main_comb[["dist"]])
-    classified_main_comb <- full_read_info <- NULL
+    classified_main_comb <- tibble(comb=main_comb[["comb_id"]],
+                                   status="null",
+                                         nstatus=0,
+                                         conf=0,
+                                         phasing="direct")
     main_classified_reads <- classify_reads(main_comb, bamDna, bamRna, verbose)
     append_loglist(nrow(main_classified_reads), 
            "reads / read-pairs covering both positions")
@@ -27,6 +35,9 @@ perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity,
           comb=main_comb[['comb_id']],
           phasing="direct"
         ) 
+      store_log(phasingDir, classified_main_comb %>% mutate(gene=basename(geneDir)), 
+                paste0("classified_combination_", 
+                       main_comb[['comb_id']], ".tsv"))
     }   
     return(classified_main_comb)
   }) %>%
