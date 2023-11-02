@@ -170,15 +170,16 @@ phase_against_phased_snps <- function(muts_in_hap,
   name_id_col <- str_match(names(muts_in_hap), "hap_id|seg_id") %>% .[!is.na(.)]
   HAP_ID <- unique(muts_in_hap[[name_id_col]])
   log_phasing_results <- NULL
-  df_dist <- apply(muts_in_hap, 1, function(mut){
-    phased_snps_in_haploblock_ids %>%
-      mutate(dist=abs(start-as.numeric(mut[["pos"]])),
-             mut_id=mut[["mut_id"]]) %>%
-      return()
-  }) %>% bind_rows() %>%
-    filter(dist<distCutOff) %>%
-    arrange(dist) %>%
-    mutate(comb_id=paste(mut_id, snp_id, sep="-"))
+  df_dist <- make_distance_tbl(muts_in_hap, phased_snps_in_haploblock_ids, distCutOff)
+  # df_dist <- apply(muts_in_hap, 1, function(mut){
+  #   phased_snps_in_haploblock_ids %>%
+  #     mutate(dist=abs(start-as.numeric(mut[["pos"]])),
+  #            mut_id=mut[["mut_id"]]) %>%
+  #     return()
+  # }) %>% bind_rows() %>%
+  #   filter(dist<distCutOff) %>%
+  #   arrange(dist) %>%
+  #   mutate(comb_id=paste(mut_id, snp_id, sep="-"))
  ##prind(df_dist)
   store_log(phasingDir, df_dist, paste0("dist_df_hb_", 
                                      HAP_ID, ".tsv"))

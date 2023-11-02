@@ -1074,6 +1074,102 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex,
   func_end(verbose)
   return(df_germ)
 }
+# recombine_three_combinations <- function(states){
+#   #inp <- states
+#   if(sum(length(which(states==0)), length(is.na(states)))==1&length(which(states==2))<2){
+#     states[which(states==0)] <- max(states)
+#   } 
+#   #message(inp, " -> ", states)
+#   return(states)  
+# }
+pick_next <- function(all_combinations_to_be_phased){
+  all_combinations_to_be_phased %>%
+    filter(prio==max(prio)) %>%
+    .[1,] %>%
+    pull(comb) %>%
+    return()
+}
+
+recombine_three_combinations <- function(states){
+  inp <- states
+  is_undefined <- which((is.na(states)|states==0))
+  if(length(is_undefined)==1&length(which(states==2))<2){
+    states[is_undefined] <- max(states)
+  } 
+  message(inp, " -> ", states)
+  return(states)  
+}
+
+
+subdivide_muts_in_three_combs <- function(all_muts){
+  
+  all_comb <- expand.grid(all_muts, all_muts) %>% as_tibble() %>% rowwise() %>% 
+    mutate(comb=ifelse(Var1!=Var2,
+                       paste(sort(c(Var1,Var2)), collapse="-"), NA)) %>% 
+    pull(comb) %>% unique() %>% .[which(!is.na(.))]
+  
+  ret <- expand.grid(all_comb, all_comb, all_comb) %>% as_tibble() %>%
+    filter(!(Var1==Var2|Var1==Var3|Var2==Var3)) %>%
+    mutate_all(.funs = as.character) %>%
+    rowwise() %>%
+    mutate(ccid=paste(sort(c(Var1, Var2, Var3)), collapse = "_")) %>%
+    select(ccid) %>%
+    unique() %>%
+    mutate(
+      v1=unlist(str_split(ccid, "-|_")) %>% unique() %>% .[1],
+      v2=unlist(str_split(ccid, "-|_")) %>% unique() %>% .[2],
+      v3=unlist(str_split(ccid, "-|_")) %>% unique() %>% .[3],
+      nv1=str_count(ccid, v1),
+      nv2=str_count(ccid, v2),
+      nv3=str_count(ccid, v3)) %>%
+    filter(nv1==2, nv2==2, nv3==2)
+  
+  return(ret$ccid)      
+  
+}
+
+define_next_priority <- function(all_muts, next_phasing){
+  subdivide_muts_in_three_combs(all_muts) %>%
+    
+    lapply(function(COMB){
+      tib <- COMB %>%str_split("_") %>%
+        unlist() %>%
+        as_tibble() %>%
+        left_join(next_phasing, by=c("value"="comb")) 
+      
+      nna <- sum(is.na(tib$nstatus))
+      nnull <- length(which(tib$nstatus==0))
+      if(nnull>1){
+        prio <- 0
+      } else if(nna==1){
+        prio <- 2
+      } else {
+        prio <- 1
+      }
+      
+      if(any(str_count(tib$value, "m")>1)){
+        prio <- prio+0.5
+      }   
+      
+      tibf <- tib %>%
+        mutate(prio=ifelse(is.na(nstatus), prio, 0),
+               master_comb=COMB)
+      
+      
+      
+      return(select(tibf, comb=value, prio, master_comb))
+      
+    }) %>%
+    bind_rows() %>%
+    # group_by(comb) %>%
+    # summarize(sm=sum(prio)) %>%
+    # filter(sm==max(sm)) %>%
+    # .[1,] %>%
+    # pull(comb) %>%
+    return()
+}
+
+
 #' @keywords internal
 #' description follows
 #' @importFrom stringr str_split
@@ -1406,10 +1502,27 @@ eval_haploblock_phasing <- function(do_haploblock_phasing,
   }
   return(try)
 }
+
+make_distance_tbl <- function(muts_in_hap, phased_snps_in_haploblock_ids, distCutOff){
+  func_start()
+  df_dist <- apply(muts_in_hap, 1, function(mut){
+    phased_snps_in_haploblock_ids %>%
+      mutate(dist=abs(start-as.numeric(mut[["pos"]])),
+             mut_id=mut[["mut_id"]]) %>%
+      return()
+  }) %>% bind_rows() %>%
+    filter(dist<distCutOff) %>%
+    arrange(dist) %>%
+    mutate(comb_id=paste(mut_id, snp_id, sep="-"))
+  func_end()
+  return(df_dist)
+}
+
+
 decide_following_phasing <- function(in_list, phasedVcf, verbose,
                                      phasing_mode="full", phasing_type, 
-                                     haploBlocks){
-  func_start(verbose)
+                                     haploBlocks=NULL){
+  func_start()
   proceed <- FALSE
   file_presence <- FALSE
   conf_cutoff <- 3
@@ -1417,12 +1530,14 @@ decide_following_phasing <- function(in_list, phasedVcf, verbose,
   
    
   if(!is.null(phasedVcf)){
-    if(phasing_type=="imbalance"){
-      file_presence <- TRUE
-    } else {
+    if(phasing_type=="haploblock"){
+      
       if(!is.null(haploBlocks)){
         file_presence <- TRUE
-      } 
+      }       
+    } else {
+      ## either imbalance or indirect
+      file_presence <- TRUE
     }
   }
   if(file_presence==TRUE){
@@ -1477,9 +1592,9 @@ print_tibble <- function(tbl_in){
 }
 aggregate_phasing <- function(in_list, all_combinations, geneDir, verbose){
   func_start(verbose)
-  phasing_types <- factor(c("direct", "haploblock", "imbalance"))
+  phasing_types <- factor(c("direct","indirect", "haploblock", "imbalance"))
   corr_factors <- tibble(phasing=phasing_types,
-                         factor=c(1,1,0.5))
+                         factor=c(1,1,1,0.5))
   all_phasing_types <- lapply(in_list, nth, 1) %>% bind_rows() %>%
     left_join(corr_factors, by="phasing") %>%
     mutate(conf_type=conf*factor)
@@ -1545,6 +1660,9 @@ phase <- function(df_gene, bamDna, bamRna,
   direct_phasing <- perform_direct_phasing(all_combinations, bamDna, bamRna, 
                                            purity, verbose, printLog, 
                                            showReadDetail, geneDir)
+  
+  indirect_phasing <- perform_indirect_phasing(df_gene, phasedVcf, refGen, verbose, phasingMode, all_combinations)
+  
   haploblock_phasing <- perform_haploblock_phasing(all_combinations,
                                                    direct_phasing, df_gene, 
                                                    haploBlocks, phasedVcf,
@@ -1560,6 +1678,7 @@ phase <- function(df_gene, bamDna, bamRna,
                                                  verbose, geneDir, refGen, snpQualityCutOff, 
                                                  phasingMode)
   phasing_results_list <- list(direct_phasing,
+                               indirect_phasing,
                                haploblock_phasing,
                                imbalance_phasing)
   aggregated_phasing <- aggregate_phasing(phasing_results_list, 
@@ -1573,47 +1692,61 @@ eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
   func_start()
   req_output_cols <- c("gene", "n_mut", "score", "conf",  "info")
   if(nrow(all_comb)==1){
+    ## only one combination
     gene_phasing <- all_comb %>%
       mutate(info=paste0(phasing, "-phasing of ", comb, ": ", status, 
                          "; left wt cp: ", round(wt_cp, 2)))
-  } else if(max(all_comb$score)==2){  
-    ## at least two combinations one of whcih affects all copies
-    gene_phasing <- all_comb %>% 
-      filter(wt_cp==min(all_comb$wt_cp)) %>%
-      .[1,] %>%
-      mutate(info=paste0(phasing, "-phasing of ", comb, ": ", status, 
-                         "; left wt cp: ", round(wt_cp, 2))) 
-  } else if(str_count(paste(all_comb$status, collapse=' '),
-                      'diff')==nrow(all_comb)&
-            nrow(all_comb)>=mean(as.numeric(df_gene$tcn))){ 
-    
-    gene_phasing <- all_comb %>% 
-      filter(wt_cp==min(all_comb$wt_cp)) %>%
-      .[1,]%>% 
-      mutate(
-        info=paste(
-        'unclear: all affected is very likely because all',nrow(all_comb),
-        'mutations are at different copies and tcn=', 
-        mean(as.numeric(df_gene$tcn)),
-        'tumor might be subclonal and therefore wt-copies left'))
-    
-    
-    
-  } else if(nrow(all_comb)>3){
-    
-    gene_phasing <- all_comb %>% 
-      filter(wt_cp==min(all_comb$wt_cp)) %>%
-      .[1,] %>%
-      mutate(info=      paste('unclear: very high number of mutations...', 
-            'probably wt copies left but please check variant table'))
-    
   } else {
-    gene_phasing <- all_comb %>% 
-      filter(wt_cp==min(all_comb$wt_cp)) %>%
-      .[1,] %>%
-      mutate(info="test")
+    
+    ## check if combinationa re missing and try to fill them
+    
+    if(max(all_comb$score)==2){  
+      ## at least two combinations one of whcih affects all copies
+      gene_phasing <- all_comb %>% 
+        filter(wt_cp==min(all_comb$wt_cp)) %>%
+        .[1,] %>%
+        mutate(info=paste0(phasing, "-phasing of ", comb, ": ", status, 
+                           "; left wt cp: ", round(wt_cp, 2))) 
+      
+      
+    } else if(str_count(paste(all_comb$status, collapse=' '),
+                        'diff')==nrow(all_comb)&
+              nrow(all_comb)>=mean(as.numeric(df_gene$tcn))){ 
+      
+      gene_phasing <- all_comb %>% 
+        filter(wt_cp==min(all_comb$wt_cp)) %>%
+        .[1,]%>% 
+        mutate(
+          info=paste(
+          'unclear: all affected is very likely because all',nrow(all_comb),
+          'mutations are at different copies and tcn=', 
+          mean(as.numeric(df_gene$tcn)),
+          'tumor might be subclonal and therefore wt-copies left'))
+      
+      
+      
+    } else if(nrow(all_comb)>3){
+      
+      gene_phasing <- all_comb %>% 
+        filter(wt_cp==min(all_comb$wt_cp)) %>%
+        .[1,] %>%
+        mutate(info=      paste('unclear: very high number of mutations...', 
+              'probably wt copies left but please check variant table'))
+      
+    } else {
+      gene_phasing <- all_comb %>% 
+        filter(wt_cp==min(all_comb$wt_cp)) %>%
+        .[1,] %>%
+        mutate(info="test")
+    }
+    
+    
+    
   }
-  func_end(verbose)
+    
+    
+      
+  func_end()
   return(gene_phasing %>%
            mutate(n_mut=nrow(df_gene)) %>%
            select(all_of(req_output_cols)))

@@ -125,16 +125,146 @@ phase_along_path <- function(path, sub_checked_read_presence, bam_raw,
   return(sub_fin_comb)
 }
 
-perform_extended_snp_phasing <- function(df_gene, vcf, refGen, verbose){
+get_muts_to_be_phased <- function(df_gene){
+  warning("IMPLEMENT FILTER OF RELEVANT PHASING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+  return(df_gene$mut_id)
+}
+
+
+rearrange_priorities <- function(sub_somb, phasing_status){
   
-  region_to_load <- paste0(unique(df_gene$chr), ":", min(df_gene$pos),
-                           "-", max(df_gene$pos)) %>%
-    GRanges()
-  print(paste0(unique(df_gene$chr), ":", min(df_gene$pos),
-               "-", max(df_gene$pos)))
-  loaded_vcf <- loadVcf(vcf, unique(df_gene$chr), region_to_load, refGen, 
-                        verbose)
-  print(loaded_vcf)
+  prioritized <- 
+    sub_comb %>%
+    left_join(phasing_status, by=c("comb_id"="comb")) %>%
+    mutate(isna=is.na(nstatus)) %>%
+    arrange(desc(isna))
+  
+  return(prioritized)
+  
+}
+
+perform_indirect_phasing <- function(df_gene, phasedVcf, refGen, verbose, phasing_mode, all_combinations){
+  
+  func_start()
+  phasing_type <- "indirect"
+  do_indirect_phasing <- decide_following_phasing(list(direct_phasing_result), 
+                                                  phasedVcf, verbose,
+                                       phasing_mode, phasing_type)
+  
+  
+  if(do_indirect_phasing){
+    if(!is.null(geneDir)){
+      phasingDir <- file.path(geneDir, phasing_type)
+      dir.create(phasingDir)
+    }
+    
+    main_comb_to_be_phased <- direct_phasing$status %>%
+      filter(nstatus==0) %>%
+      pull(comb)
+      
+    
+    region_to_load <- paste0(unique(df_gene$chr), ":", min(df_gene$pos)+1,
+                             "-", max(df_gene$pos)-1) %>%
+      GRanges()  
+    
+    loaded_vcf <- loadVcf(phasedVcf, unique(df_gene$chr), region_to_load, refGen, 
+                          verbose)  
+    ## filter homozygous variants
+    loaded_vcf_hz <- loaded_vcf[which(loaded_vcf$gt %in% c("1/0", "0/1", "1|0", "0|1"))]
+    #define_region_to_load(df_gene)
+    snps <- loaded_vcf_hz %>% as_tibble() %>%
+      mutate(snp_id=paste0("s", c(1:nrow(.))))
+    
+    
+    sub_comb <- bind_rows(
+      df_gene %>%
+        select(chr, pos, mut_id, ref, alt, class) %>%
+        mutate_all(.funs = as.character),
+      snps %>%
+        mutate(,
+          class="snv") %>%
+        select(chr=seqnames, pos=start, mut_id=snp_id, 
+               ref=REF, alt=ALT, class) %>%
+        mutate_all(.funs = as.character)
+    ) %>%
+      make_phasing_combinations() %>%
+      ## THIS IS VERY IMPORTANT; FOR SOME REASON THE TRANSITION FROM FACTOR TO CHARACTERE IN THE NEXT FUNCTION CAUSES A -1 FOR THE CHROMOSOMSE!!!!!!
+      mutate(chr1=as.character(chr1), chr2=as.character(chr2)) %>%
+      #filter(str_count(comb_id, "m")<2) %>%
+      arrange(mut_id1)
+    
+    
+    next_phasing <- direct_phasing$status %>% select(comb, nstatus, conf)
+    all_muts <- c(df_gene$mut_id, snps$snp_id)
+    
+    
+    all_combinations_to_be_phased <- define_next_priority(all_muts, next_phasing) %>%
+      left_join(next_phasing, by="comb")
+    
+    #all_master_combinations <- unique(all_combinations_to_be_phased$master_comb)
+    
+    to_phase_next <- pick_next(all_combinations_to_be_phased) 
+    abort <- 1
+    i <- 1
+    main_mut_reached <- FALSE
+    combined_phasing_results <- tibble()
+    while(main_mut_reached==FALSE&i<=nrow(all_combinations_to_be_phased)&abort<10){
+      print(i)
+      classified_main_comb <- phase_combination(
+        sub_comb[which(sub_comb$comb_id==to_phase_next),], bamDna, bamRna, 
+        verbose, geneDir, phasingDir, phasing_type)
+      combined_phasing_results <- bind_rows(combined_phasing_results,
+                                            classified_main_comb)
+      next_phasing <- bind_rows(next_phasing,
+                                classified_main_comb %>% select(comb, nstatus, conf))
+      all_combinations_to_be_phased <- define_next_priority(all_muts, next_phasing) %>%
+        left_join(next_phasing, by="comb")%>%
+        group_by(master_comb) %>%
+        mutate(nstatus=recombine_three_combinations(nstatus),
+               conf=case_when(
+                 conf==0&sum(conf==0)==1 ~ mean(conf[which(conf!=0)]),
+                 TRUE ~ conf))
+      states_main_comb <- all_combinations_to_be_phased %>%
+        filter(comb %in% main_comb_to_be_phased) %>%
+        group_by(comb) %>%
+        summarize(nstatus=max(nstatus))
+      if(0 %in% states_main_comb$nstatus){
+        to_phase_next <- pick_next(all_combinations_to_be_phased) 
+      } else {
+        main_mut_reached <- TRUE
+      }
+      i <- i+1
+      abort <- abort+1
+    }
+    if(main_mut_reached==TRUE){
+      ## check whioch three-comb was the relevant one
+      all_combinations_to_be_phased %>%
+        filter(!any(nstatus==0))
+      
+      final <- states_main_comb %>%
+        left_join(all_combinations_to_be_phased %>% group_by(comb) %>% summarize(conf=max(conf))) %>%
+        mutate(phasing=phasing_type,
+               status=case_when(nstatus==2 ~ "diff",
+                                nstatus==1 ~ "same",
+                                TRUE ~ "null"
+               ))
+      
+    } else {
+      ## phasing did not work
+      final <- fill_phasing_status(all_combinations, NULL, 
+                                   phasing_type, verbose)
+    }
+  } else {
+    final <- fill_phasing_status(all_combinations, NULL, 
+                                 phasing_type, verbose)
+  }
+  indirect_phasing_results <- list(
+    status=final,
+    info=combined_phasing_results,
+    exit=NA
+  )
+  return(indirect_phasing_results)
+  ## aggregate confidence from used phasing
 }
 
 
