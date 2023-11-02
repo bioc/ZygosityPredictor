@@ -1,4 +1,4 @@
-phase_combination <- function(main_comb, bamDna, bamRna, verbose, geneDir, phasingDir, phasing_type){
+phase_combination <- function(main_comb, bamDna, bamRna, verbose, geneDir, phasingDir, phasing_type, showReadDetail){
   classified_main_comb <- tibble(comb=main_comb[["comb_id"]],
                                  status="null",
                                  nstatus=0,
@@ -47,7 +47,7 @@ perform_direct_phasing <- function(all_combinations, bamDna, bamRna, purity,
     append_loglist("direct phasing of combination:", main_comb[["comb_id"]],
                    "distance:", main_comb[["dist"]])
     classified_main_comb <- phase_combination(main_comb, bamDna, bamRna, 
-                                              verbose, geneDir, phasingDir, phasing_type)
+                                              verbose, geneDir, phasingDir, phasing_type, showReadDetail)
     # classified_main_comb <- tibble(comb=main_comb[["comb_id"]],
     #                                status="null",
     #                                      nstatus=0,

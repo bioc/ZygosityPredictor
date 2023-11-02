@@ -1084,6 +1084,7 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex,
 # }
 pick_next <- function(all_combinations_to_be_phased){
   all_combinations_to_be_phased %>%
+    ungroup() %>%
     filter(prio==max(prio)) %>%
     .[1,] %>%
     pull(comb) %>%
@@ -1101,13 +1102,14 @@ recombine_three_combinations <- function(states){
 }
 
 
-subdivide_muts_in_three_combs <- function(all_muts){
+subdivide_muts_in_three_combs <- function(all_comb){
+  func_start()
   
-  all_comb <- expand.grid(all_muts, all_muts) %>% as_tibble() %>% rowwise() %>% 
-    mutate(comb=ifelse(Var1!=Var2,
-                       paste(sort(c(Var1,Var2)), collapse="-"), NA)) %>% 
-    pull(comb) %>% unique() %>% .[which(!is.na(.))]
-  
+  # all_comb <- expand.grid(all_muts, all_muts) %>% as_tibble() %>% rowwise() %>% 
+  #   mutate(comb=ifelse(Var1!=Var2,
+  #                      paste(sort(c(Var1,Var2)), collapse="-"), NA)) %>% 
+  #   pull(comb) %>% unique() %>% .[which(!is.na(.))]
+  # print(all_comb)
   ret <- expand.grid(all_comb, all_comb, all_comb) %>% as_tibble() %>%
     filter(!(Var1==Var2|Var1==Var3|Var2==Var3)) %>%
     mutate_all(.funs = as.character) %>%
@@ -1123,16 +1125,18 @@ subdivide_muts_in_three_combs <- function(all_muts){
       nv2=str_count(ccid, v2),
       nv3=str_count(ccid, v3)) %>%
     filter(nv1==2, nv2==2, nv3==2)
-  
-  return(ret$ccid)      
-  
+  func_end()
+  return(ret$ccid)
 }
 
-define_next_priority <- function(all_muts, next_phasing){
-  subdivide_muts_in_three_combs(all_muts) %>%
+define_next_priority <- function(all_comb, next_phasing){
+  func_start()
+  np <- subdivide_muts_in_three_combs(all_comb) %>%
     
     lapply(function(COMB){
-      tib <- COMB %>%str_split("_") %>%
+      print(COMB)
+      tib <- COMB %>%
+        str_split("_") %>%
         unlist() %>%
         as_tibble() %>%
         left_join(next_phasing, by=c("value"="comb")) 
@@ -1160,13 +1164,14 @@ define_next_priority <- function(all_muts, next_phasing){
       return(select(tibf, comb=value, prio, master_comb))
       
     }) %>%
-    bind_rows() %>%
+    bind_rows() #%>%
     # group_by(comb) %>%
     # summarize(sm=sum(prio)) %>%
     # filter(sm==max(sm)) %>%
     # .[1,] %>%
     # pull(comb) %>%
-    return()
+  func_end()
+  return(np)
 }
 
 
@@ -1636,6 +1641,36 @@ aggregate_phasing <- function(in_list, all_combinations, geneDir, verbose){
   func_end(verbose)
   return(per_comb)
 }
+split_genomic_range <- function(gr, exclude_positions) {
+  # Sort the exclude_positions and ensure they are unique
+  exclude_positions <- sort(unique(exclude_positions))
+  # Initialize the list to store subranges
+  subranges <- list()
+  # Add the first subrange from the beginning of the range to the first exclude position
+  if (exclude_positions[1] > start(gr)) {
+    subranges[[1]] <- GRanges(
+      seqnames = seqnames(gr),
+      ranges = IRanges(start = start(gr), end = exclude_positions[1] - 1)
+    )
+  }
+  # Add subranges between the exclude positions
+  for (i in seq_along(exclude_positions)[-1]) {
+    subranges[[length(subranges) + 1]] <- GRanges(
+      seqnames = seqnames(gr),
+      ranges = IRanges(start = exclude_positions[i - 1] + 1, end = exclude_positions[i] - 1)
+    )
+  }
+  # Add the last subrange from the last exclude position to the end of the range
+  if (exclude_positions[length(exclude_positions)] < end(gr)) {
+    subranges[[length(subranges) + 1]] <- GRanges(
+      seqnames = seqnames(gr),
+      ranges = IRanges(start = exclude_positions[length(exclude_positions)] + 1, end = end(gr))
+    )
+  }
+  # Combine the subranges into a single GRanges object
+  split_gr <- do.call(c, subranges)
+  return(split_gr)
+}
 #' @keywords internal
 #' description follows
 #' @importFrom stringr %>%
@@ -1661,7 +1696,10 @@ phase <- function(df_gene, bamDna, bamRna,
                                            purity, verbose, printLog, 
                                            showReadDetail, geneDir)
   
-  indirect_phasing <- perform_indirect_phasing(df_gene, phasedVcf, refGen, verbose, phasingMode, all_combinations)
+  indirect_phasing <- perform_indirect_phasing(df_gene, direct_phasing, phasedVcf, 
+                                               refGen, verbose, phasingMode, 
+                                               all_combinations, showReadDetail, 
+                                               geneDir, distCutOff)
   
   haploblock_phasing <- perform_haploblock_phasing(all_combinations,
                                                    direct_phasing, df_gene, 
@@ -1683,6 +1721,7 @@ phase <- function(df_gene, bamDna, bamRna,
                                imbalance_phasing)
   aggregated_phasing <- aggregate_phasing(phasing_results_list, 
                                           all_combinations, geneDir, verbose)
+  print(aggregated_phasing)
   func_end()
   return(aggregated_phasing) 
 }
