@@ -199,12 +199,6 @@ perform_imbalance_phasing <- function(all_combinations, direct_phasing,
         relevant_segments <- table(df_gene_seg_full$seg_id) %>% 
           .[which(.>1)] %>% names() %>% .[which(!.=="0")]
         
-        
-        
-        
-        
-        
-        
         per_segment <- lapply(relevant_segments, function(SEG){
           df_gene_seg <- df_gene_seg_full %>%
             filter(seg_id==SEG)
@@ -236,6 +230,11 @@ perform_imbalance_phasing <- function(all_combinations, direct_phasing,
                                                     all_combinations, verbose)
         imbalance_phasing_exit <- combined_phasing[[3]]
       } else {
+        if(any(df_gene_seg_full$seg_id > 0)&any(table(
+          df_gene_seg_full[which(df_gene_seg_full$seg_id>0),]$seg_id
+        )==1)){
+          write_tsv(df_gene_seg_full, file=file.path(geneDir, "one_mut_in_segment.tsv"))
+        }
         imbalance_phasing_exit <- "less than two variants in segment"
       }
     } else {
