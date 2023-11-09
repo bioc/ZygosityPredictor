@@ -337,7 +337,8 @@ predict_zygosity <- function(purity,
     gene <- final_phasing_info <- combined_read_details <-  final_output <-
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
     som_covered <- germ_covered <- final_phasing_info <- 
-    combined_snp_phasing <- evaluation_per_gene <- log_list_per_gene <- NULL
+    combined_snp_phasing <- evaluation_per_gene <- log_list_per_gene <- 
+    detailed_phasing_info <- comb_mat_phased <- comb_mat_info <- NULL
   ## define global debugging variable
   set_global_variables(debug, verbose, printLog)
   func_start()
@@ -367,7 +368,9 @@ predict_zygosity <- function(purity,
       bamDna <- check_bam(bamDna)
       bamRna <- check_rna(bamRna)
       logDir <- check_logDir(logDir)
+      #print(haploBlocks)
       haploBlocks <- check_haploblocks(haploBlocks)
+      #print(haploBlocks)
       phasedVcf <- check_vcf(vcf)
       per_gene <- lapply(
         unique(evaluation_per_variant$gene), 
@@ -394,6 +397,15 @@ predict_zygosity <- function(purity,
         full_phasing_info <- lapply(full_eval_per_gene, nth, n=2) %>% 
           compact() %>% 
           bind_rows() 
+        detailed_phasing_info <- lapply(full_eval_per_gene, nth, n=3) %>% 
+          compact() %>% 
+          bind_rows() 
+        comb_mat_phased <- lapply(full_eval_per_gene, nth, n=4) %>%
+          compact() %>%
+          Reduce(function(x,y)append(x,y),.)
+        comb_mat_info <- lapply(full_eval_per_gene, nth, n=5) %>%
+          compact() %>%
+          Reduce(function(x,y)append(x,y),.)
         combined_eval_per_gene <- lapply(full_eval_per_gene, nth, n=1) %>% 
           bind_rows() %>%
           select(gene, n_mut, status, conf, eval_time_s, info)
@@ -408,7 +420,10 @@ predict_zygosity <- function(purity,
     eval_per_gene=combined_eval_per_gene,
     phasing_info=full_phasing_info,
     uncovered_input=evaluation_per_variant_pre$combined_uncovered,
-    log_list_per_gene=log_list_per_gene
+    log_list_per_gene=log_list_per_gene,
+    detailed_phasing_info=detailed_phasing_info,
+    mat_phased=comb_mat_phased,
+    mat_info=comb_mat_info
   ) %>%
     compact()
   func_end()

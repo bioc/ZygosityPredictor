@@ -42,7 +42,30 @@ assign_correct_colnames <- function(obj, type){
         obj$LOH==FALSE&round(as.numeric(obj$tcn))%%2!=0&as.numeric(obj$tcn)>=2.5 ~ TRUE,
         TRUE ~ FALSE
       )
+      #obj$gt_cna <- "1:2"
     }
+    ## if allelic imbalance was detected somewhere, also the genotype needs to be annotated 
+    ## except if tcn ==3
+    col_genotype <- str_match(
+      nm_md(obj), paste(allowed_inputs("colnames_genotype"), 
+                        collapse="|")) %>%
+      .[which(!is.na(.))]
+    if(length(col_genotype)>0){
+      ## if colum already there, rename it
+      elementMetadata(obj)[,"gt_cna"] <- 
+        elementMetadata(obj)[,col_genotype]
+    } else {
+      ## if not yet there, calculate it for segments where it is possible
+      # obj$all_imb <- case_when(
+      #   obj$LOH==FALSE&round(as.numeric(obj$tcn))%%2!=0&as.numeric(obj$tcn)>=2.5 ~ TRUE,
+      #   TRUE ~ FALSE
+      # )
+      obj$gt_cna <- case_when(
+        round(obj$tcn)==3 ~ "1:2",
+        TRUE ~ NA
+      )
+    }
+    
   } else {
     col_gene <- str_match(
       nm_md(obj), 
@@ -436,7 +459,8 @@ allowed_inputs <- function(which_one){
     colnames_alt = c("ALT", "alt","Alt"),
     colnames_tcn = c("TCN", "tcn", "Tcn"),
     colnames_cna_type = c("cna_type", "CNA_type", "Cna_Type", "CNA_Type"),
-    colnames_all_imb = c("allelic_imbalance", "all_imb", "AI")
+    colnames_all_imb = c("allelic_imbalance", "all_imb", "AI"),
+    colnames_genotype = c("gt_cna", "genotype", "GT", "gt")
   )
   func_end()
   return(type_list[[which_one]])
