@@ -25,6 +25,16 @@ tumor-suppressor genes are present. ZygosityPredictor was developed to handle
 somatic and germline small variants. In addition to the small variant context, 
 it can assess larger deletions, which may cause losses of exons or whole genes.
 
+# Important
+
+To use ZygosityPredictor, the input data has to meet some requirements. The 
+most important one is that all input variants, SNVs, Indels and sCNAs must 
+originate from a fully clonal tumor. If indications are present that a sample
+consists of several sub clones (e.g. in tumor samples), the results must be seen 
+with caution as the implementation is founded on the assumption of clonality.
+The second important requirement applies mainly to the second part of the tool
+and will thereofre be explained in section "Predict Zygosity"
+
 # Installation
 
 The following code can be used to install ZygosityPredictor. The installation
@@ -56,6 +66,8 @@ library(GenomicRanges)
 # file to sequence alignment 
 FILE_BAM <- system.file("extdata", "ZP_example.bam", 
                         package = "ZygosityPredictor")
+VCF <- system.file("extdata", "ZP_example_chr7.vcf.gz", 
+                        package = "ZygosityPredictor")
 # meta information of the sample
 PURITY <- 0.98
 PLOIDY <- 1.57
@@ -66,6 +78,7 @@ data("GR_GERM_SMALL_VARS")
 data("GR_SOM_SMALL_VARS")
 # used gene model
 data("GR_GENE_MODEL")
+data("GR_HAPLOBLOCKS")
 
 ```
 
@@ -171,6 +184,18 @@ GR_SOM_SMALL_VARS %>%
   )
 ```
 
+There s also the function ```predict_per_variant``` that basically does the same
+with slightly adjusted inputs. 
+
+```{r}
+predict_per_variant(purity=PURITY, 
+                    sex=SEX,
+                    somCna=GR_SCNA,
+                    somSmallVars=GR_SOM_SMALL_VARS)
+
+```
+
+
 
 
 # Predict Zygosity
@@ -203,8 +228,8 @@ five classes:
   + **bamDna\*\* **: character; path to indexed alignment (.bam format)
   + **bamRna**: character; path to rna-sequencing data (.bam format). 
   + **vcf**: character, or character vector containing several vcf file paths; 
-  path to variant call file (.vcf.gz format). Will be used 
-  (if provided)
+  path to variant call file (.vcf.gz format) or .vcf. If provided also input
+  **refGen** is required.
   for extended SNP phasing if variants on the same gene are too far away from
   each other for direct phasing
 * Sample meta information:
@@ -242,7 +267,13 @@ five classes:
   restricting the gene model can be used to tell the tool which genes to 
   analyze. In the case of this vignette, the object contains only the genes we 
   selected.
+* Haploblocks
+  + **haploBlocks**: GRanges object; containing predefined haplock region, i.e.
+  genomic regions in which SNPs could be phased to one specific haplotype. By 
+  providing this haploblock together with the SNPs and its genotype annotation
+  (1|0 or 0|1) via input **vcf**, haploblock phasing will be enabled.
 * Options
+  + **logDir**: character; If provided, detailed output will be stored in it
   + **includeIncompleteDel**: logical, default=TRUE; Should incomplete 
   deletions (monoallelic deletions in a diploid sample) be included in the 
   evaluation? Since these often span large parts of the chromosomes and will 
@@ -269,6 +300,7 @@ five classes:
   strings are covered. It is recommended to leave this flag TRUE.
   + **printLog**:  logical, default=TRUE; If TRUE, the tool will print detailed
   information how the assessment is done for each gene.
+  + **verbose**: logical, default=FALSE; prints debugging information
   + **colnameTcn**: character; indicating the name of the metadata column 
   containing the tcn information in the somCna object. If not provided 
   the tool tries to detect the column according to default names.
@@ -279,6 +311,9 @@ five classes:
   should not be tried anymore. As the probability of finding overlapping reads
   at such a long distance is very low and the runtime will increase
   exponentially.
+  + **snpQualityCutOff**
+  + **refGen**: character, default="hg38"; Required if vcf files is provided. 
+  Either "hg38" or "hg19". Relevant for VariantAnnotation vcf loading
 
 
 ## Predict zygosity for a set of genes in a sample
@@ -296,7 +331,7 @@ some of which are of little biological relevance or even SNPs, will inevitably
 reduce the validity of the results.
 
 ```{r, results = FALSE}
-full_prediction = predict_zygosity(
+fp = predict_zygosity(
   purity = PURITY, 
   ploidy = PLOIDY,
   sex = SEX,
@@ -305,7 +340,8 @@ full_prediction = predict_zygosity(
   germSmallVars = GR_GERM_SMALL_VARS, 
   geneModel = GR_GENE_MODEL,
   bamDna = FILE_BAM,
-  showReadDetail = TRUE
+  vcf=VCF,
+  haploBlocks = GR_HAPLOBLOCKS
 )
 ```
 
@@ -315,7 +351,7 @@ Of note, the results displayed here were chosen to explain and exemplify the
 functionality of the tool; biological and medical impact of the specific 
 variants had not been a selection criterion.
 The result which is returned by the function consists of a list of three 
-(or up to six) tibbles:
+(or up to six) tibbles. 
 
 * Evaluation per variant
 * Evaluation per gene
@@ -324,6 +360,48 @@ The result which is returned by the function consists of a list of three
 * Variants not covered by somCna (only if present and no sCNA gap assumption 
 was done)
 * detailed information about extended SNP phasing if it was performed
+
+The information can also be accesed via the accessor 
+functions: ```ZP_ov()``` and ```gene_ov()```. 
+
+```{r}
+ZP_ov(fp)
+```
+
+The function provides an overview about the evaluations done by 
+ZygosityPredictor. One can see that in our case 12 input small variants were 
+used to predict 7 gene status. Of those, two got the status all_copies_affected.
+By using  ```gene_ov()```, more detailed information can be viewed about how the
+tool came to a gene status. What the accessor function does is basically 
+filtering the output tibbles to the gene of relevance.
+
+```{r}
+gene_ov(fp, OR2J1)
+```
+
+The first prompted tibble originates from the eval_per_gene tibble of the output. 
+The tibble shown 
+below originates from eval_per_variant and shows all input small variants of the
+gene. The next tibble originates from main_phasing_info and shows the main
+phasing combinations. Finally, the last tibble comes from detailed_phasing_info
+and contains every phasing combination including the ones with and between SNPs.
+
+What can be seen is that the final gene status of OR2J1 is wt_copies_left. The
+tool predicted around 2.6 remaining wt copies with maximum confidence level of 
+1. Below it can be seen that 3 small variants inside the gene were in the input
+leading to 3 main phasing combinations. Of those, two were directly phased while 
+m2-m3 was phased indirectly via m1-m2 and m1-m3. As all main combinations could 
+be solved, the left wt copies could be accurately defined and the gene status 
+assigned. In this particular case, the gene status could have been solved even 
+without phasing all main combinations by the case we refer to as exclusion.
+As can be seen in the main phasing combinations in column: min_poss_wt_cp, none 
+of the main phasing combinations could lead to less than 0.5 wt copies even if 
+the variants were found on different reads.
+
+
+
+
+
 
 ### Evaluation per variant
 
@@ -351,7 +429,7 @@ column.
 
 ```{r}
 # here the new columns are selected and viewed
-full_prediction$eval_per_variant %>%
+fp$eval_per_variant %>%
   # these steps are just to have a better overview
   # round numeric columns
   mutate_at(.vars=c("af","tcn", "aff_cp", "wt_cp"),
@@ -378,7 +456,7 @@ gene. The final prediction is stored in tibble format with three columns: gene,
 status - either “all copies affected” or “wt copies left” - and an info column 
 that explains how the prediction was made for that gene.
 ```{r}
-full_prediction$eval_per_gene
+fp$eval_per_gene
 ```
 
 Each gene appears once in the table. If there are several variants in one gene, 
@@ -400,7 +478,7 @@ then tries to phase at this position to check if the variants are located on
 the same or different copies. That means that not at every prediction a phasing 
 is done and therefore the following output is not always present.
 ```{r}
-full_prediction$phasing_info
+fp$phasing_info
 ```
 In the present case, phasing was performed for three genes separately. 
 The output contains information such as the distance between the two variants 
@@ -444,17 +522,6 @@ consists of a table containing every read pair that was used to perform
 haplotype phasing. In more detail, the read name of the read in the bam file is 
 provided with the classification in one of the four categories mentioned before 
 (*both, none, mut1, mut2, no_overlap, dev_var*).
-
-```{r}
-full_prediction$readpair_info
-```
-For example here, the first row tells us that the read / read pair with the 
-name K00281:15:HM775BBXX:8:2113:22972:30398 (first row) stem from a fragment of 
-the gene ELP2 and can be used for the phasing of the combination of the 
-variants m1 and m2. It was assigned into the category "mut2" which means that 
-m2 is present on that read / read pair, but m1 was not detected. Depending on 
-the number of variants of the used sample and the coverage, this table can get 
-very big, which may affect runtime.
 
 # References
 

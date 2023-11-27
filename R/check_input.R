@@ -463,7 +463,7 @@ check_haploblocks <- function(haploBlocks){
 
 #' @keywords internal
 allowed_inputs <- function(which_one){
-  func_start()
+  #func_start()
   . <- NULL
   type_list <- list(
     cna_homdel_annotation = paste(c("HOMDEL", "HomoDel", "HomoDEL", "HOMODEL", 
@@ -483,7 +483,7 @@ allowed_inputs <- function(which_one){
     colnames_all_imb = c("allelic_imbalance", "all_imb", "AI"),
     colnames_genotype = c("gt_cna", "genotype", "GT", "gt")
   )
-  func_end()
+  #func_end()
   return(type_list[[which_one]])
 }
 

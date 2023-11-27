@@ -634,12 +634,8 @@ perform_direct_phasing <- function(mat_gene, bamDna, bamRna, purity,
   unphased <- which(is.na(mat_phased))
   i <- 1
   while(i <= length(unphased)){
-  #for(i in seq(1,,1)){
-  #while(length(unphased)>0){
     ## as long as there are unphased combinations, try to phase
     comb <- unphased[i]
-    print(unphased)
-    print(comb)
     relcombxy <- get_xy_index(comb, nrow(mat_phased))
     mat_gene_relcomb <- mat_gene[relcombxy,]
     
@@ -647,7 +643,6 @@ perform_direct_phasing <- function(mat_gene, bamDna, bamRna, purity,
                                               verbose, geneDir, phasing_type, showReadDetail)
     phasing_info <- bind_rows(phasing_info,
                               classified_main_comb)
-    #unphased <- which(is.na(mat_phased))
     i <- i+1
   }
   append_matrices(phasing_info)
@@ -827,17 +822,30 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in, refGen, verbose, somCna,wh
                     colname_gt="GT", colname_af="AF", colname_dp4="DP4", 
                     dkfz=FALSE){
   func_start(verbose)
+ 
   ## first check which format input vcf has
-  region_to_load <- make_both_annotations(region_to_load_in)
+  #region_to_load <- make_both_annotations(region_to_load_in)
+  region_to_load <- region_to_load_in
+  #print(region_to_load)
   chr_anno <- as_tibble(region_to_load_in) %>%
     pull(seqnames) %>% .[1] %>% str_detect("chr")
+  sec_chrom <- ifelse(chr_anno, str_replace(chrom, "chr", ""), 
+                      paste0("chr", chrom))
   gr_list <- lapply(vcf_in, function(VCF){
+    #print(VCF)
     if(is(VCF, "TabixFile")){
+      #print("is tabix")
+      #print(chrom)
+      #print(Rsamtools::seqnamesTabix(VCF))
+      #if(length(intersect(c(chrom, sec_chrom), Rsamtools::seqnamesTabix(VCF)))>0){
       if(chrom %in% Rsamtools::seqnamesTabix(VCF)){
+        #print("chrom in seqnames")
         loadedVcf <- 
           readVcf(VCF, refGen, 
                   param=region_to_load)
         combVcf <- rowRanges(loadedVcf) 
+        #print(1111111111)
+        #print(combVcf)
         if(length(combVcf)>0){
           combVcf$ALT <- unlist(lapply(combVcf$ALT, 
                                        function(x){as.character(x[[1]][1])}))
@@ -861,12 +869,15 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in, refGen, verbose, somCna,wh
       if(str_detect(VCF, paste0("chr", 
                                 unlist(str_replace(chrom, "chr", "")), 
                                 "[^0-9]"))){
+        message("loading")
+        #print(VCF)
         loadedVcf <- VariantAnnotation::readVcf(VCF, refGen)
         gt <- VariantAnnotation::geno(loadedVcf)[[colname_gt]] %>% 
           as.character()
         af <- VariantAnnotation::info(loadedVcf)[[colname_af]] 
         dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]]
         rangesVcf <- rowRanges(loadedVcf) 
+        print(rangesVcf)
         rangesVcf$gt <- gt
         rangesVcf$af <- af
         rangesVcf$dp4 <- dp4

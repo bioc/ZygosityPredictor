@@ -18,3 +18,8 @@
 #' @format ## `GR_GENE_MODEL`
 #' GRanges object
 "GR_GENE_MODEL"
+#' haploblocks 
+#' @usage data(GR_HAPLOBLOCKS)
+#' @format ## `GR_HAPLOBLOCKS`
+#' GRanges object
+"GR_HAPLOBLOCKS"
