@@ -1,5 +1,12 @@
-#' accesor for gene predictions
+#' accesor for gene predictions printing detailed info about how a gene status 
+#' was assigned
 #' 
+#' @param fp full prediction (output of predict_zygoisty())
+#' @param inp_gene name of gene that should be printed with detailed information
+#' @param n max number of rows to print, as some gene status depend on loads of
+#' phasing results#' 
+#' 
+#' @export
 gene_ov <- function(fp, inp_gene, n=20){
   inp_gene <- as.character(rlang::ensym(inp_gene))
   
@@ -41,7 +48,11 @@ gene_ov <- function(fp, inp_gene, n=20){
 
   
 }
-
+#' accesor for ZygoistyPredictor runs. Prints an overview about the run
+#' 
+#' @param fp full prediction (output of predict_zygoisty())
+#' 
+#' @export
 ZP_ov <- function(fp){
   
   if(!is.null(fp$eval_per_variant)){
@@ -77,24 +88,6 @@ ZP_ov <- function(fp){
   }
   
 }
-
-
-# predicted_genes <- function(fp, filtering="none"){
-#   if(filtering=="none"){
-#     print(fp$eval_per_gene$gene)
-#   } else if(filtering=="phasing"){
-#     phased_genes <- fp$phasing_info
-#     if(is.null(phased_genes)){
-#       message("no genes solved via phasing")
-#     } else {
-#       
-#       message(paste(phased_genes$))
-#     }
-#     print()
-#   }
-#   
-#   
-# }
 
 #' calculates how many copies are affected by a germnline small variant
 #'

@@ -1,9 +1,6 @@
 get_single_index <- function(x,y,nr){
-  
   nr*(x-1)+y
-  
 }
-
 get_xy_index <- function(inp, nr){
   lapply(inp, function(i){
     y <- i%%nr
@@ -35,10 +32,6 @@ unknown_main <- function(){
   all_unknown <- which(upper.tri(mat_phased)&mat_phased==0)
   intersect(all_unknown, get_main_mut_pos())
 }
-
-
-
-
 add_snps_to_matrices <- function(snps){
   func_start()
   snps_hap <- snps[which(!is.na(snps$block_final)),] %>%
@@ -74,29 +67,35 @@ add_snps_to_matrices <- function(snps){
       ## if haploblock has only one snp, no concludions can be drawn
       new <- tibble()
     }
-    #%>
-    
     return(new)
   })  %>% bind_rows()
-  #print(22222222222222222222222)
-  #print(mat_phased)
-  #print(known_combs)
   append_matrices(known_combs, iterate=FALSE)
-  #print(mat_phased)
   func_end()
+}
+eval_rare_case <- function(all_comb){
+  diff_combs <- all_comb[which(all_comb$nstatus==2),]
+  if(nrow(diff_combs)>2){
+    ## more than 2 combinatiosna re diff
+    ## check for all posiible master combinations
+    mut_occurence <- unlist(str_split(diff_combs$comb, "-")) %>% table() %>%
+      .[which(.>=2)]
+    if(length(mut_occurence)>=3){
+      rare_case <- " rare_case_detected"
+    } else {
+      rare_case <- ""
+    }
+  } else {
+    rare_case <- ""
+  }
+  return(rare_case)
 }
 create_phasing_matrices <- function(all_variants, all_pos, distCutOff){
   mat_dist <<- make_dist_matrix(all_pos, all_variants, distCutOff) 
-  #if(sum(mat_dist[seq(1,length(df_gene$mut_id)),])>0){
   main_muts <<- all_variants
   main_pos <<- all_pos
   mat_phased <<- mat_dist
-  mat_phased[mat_phased!=0] <<- NA    
-  #mat_conf <<- mat_phased
+  mat_phased[mat_phased!=0] <<- NA  
   mat_info <<- mat_phased
-  #} else {
-  ## no snps closer than distCutoff to main muts
-  #}
 }
 append_phasing_matrices <- function(all_variants, all_pos, distCutOff){
   func_start()
@@ -104,22 +103,12 @@ append_phasing_matrices <- function(all_variants, all_pos, distCutOff){
                                 c(main_muts, all_variants), 
                                 distCutOff) 
   mat_phased_main <- mat_phased
-  #mat_conf_main <- mat_conf
   mat_info_main <- mat_info
-  
-  
-  
   mat_phased <<- mat_dist
   mat_phased[mat_phased!=0] <<- NA 
-  #mat_conf <<- mat_phased
   mat_info <<- mat_phased
-  #print(mat_phased)
-  
   nm <- length(main_muts)
-  #print(mat_phased[nm, nm])
-  #print(mat_phased_main)
   mat_phased[c(1:nm), c(1:nm)] <<- mat_phased_main
-  #mat_conf[c(1:nm), c(1:nm)] <<- mat_conf_main
   mat_info[c(1:nm), c(1:nm)] <<- mat_info_main
   func_end()
 }
@@ -132,21 +121,13 @@ get_main_mut_conns <- function(){
     set_names(main_muts)
 }
 get_next_path <- function(comb, distCutOff){
-  #if(sum(is.na(mat_phased))>0){
   func_start()
       
-      mains <- as.character(sort(get_xy_index(as.numeric(comb), nrow(mat_phased))))
-  
-      # main_mut_conns <- get_main_mut_conns()
-      # nn_mmc <- main_mut_conns[which(main_mut_conns!=0)]
-   # if(length(nn_mmc)>1){
-      ldc <- 1000
-      #while(length(all_paths)==0&ldc<distCutOff){
-        
-        #print(ldc)
+  mains <- as.character(sort(get_xy_index(as.numeric(comb), nrow(mat_phased))))
+
+  ldc <- 1000
         open_conns <- which((is.na(mat_phased)|mat_phased>0)&mat_dist<ldc) %>%
           get_xy_index(.,nrow(mat_phased))
-       #print(open_conns)
         if(length(dim(open_conns))!=2){
           connections <- as_tibble(t(open_conns)) %>%
             set_names(c("mut_id1", "mut_id2"))
@@ -154,38 +135,19 @@ get_next_path <- function(comb, distCutOff){
           colnames(open_conns) <- c("mut_id1", "mut_id2")
           connections <- as_tibble(open_conns)
         }
-  if(length(intersect(as.numeric(mains), c(connections$mut_id1, connections$mut_id2)))==2){
-     #print(connections)
-  
-       #print(connections$mut_id1)
-       #print(connections$mut_id2)
-       #print(mains)
-        graph <- graph_from_data_frame(connections, directed = FALSE)
-       #print(graph)
-        #shortest_path <-
-        #nnn_mmc <- names(nn_mmc) %>% str_match("\\d") %>% unlist()
-        #print(nnn_mmc)
-        all_paths <- igraph::all_shortest_paths(graph, from = mains[1], to = mains[2], mode = "all")$res  
-       #ldc <- ldc*2      
-      #}
-
-
-      if(length(all_paths)>0){
+  if(length(intersect(as.numeric(mains), 
+                      c(connections$mut_id1, connections$mut_id2)))==2){
+ 
+    graph <- graph_from_data_frame(connections, directed = FALSE)
+    all_paths <- igraph::all_shortest_paths(graph, from = mains[1], to = mains[2], mode = "all")$res  
+    if(length(all_paths)>0){
         poss <- list()
         for (PATH in all_paths){
           P <- as.numeric(names(PATH))
           res <- c()
           for(i in c(1:(length(P)-1))){
-            #print(i)
-            # for(j in c((i+1):length(P))){
-            #message(i, "-", i+1)
-            ##print(j)
-            #print(P[i])
-            #print(P[j])
             mv <- sort(c(P[i], P[i+1]))
-            #print(mv)
             conn <- get_single_index(mv[2], mv[1], nrow(mat_phased))
-            #print(conn)
             res[i] <- c(res, mat_phased[conn])
             if(is.na(mat_phased[conn])){
               poss <- c(poss, conn)
@@ -205,24 +167,17 @@ func_end()
 return(np)
 }
 prioritize_combination <- function(){
-  #print(1)
   func_start()
   unrel_rows <- rownames(mat_phased) %>% .[which(!. %in% colnames(mat_phased))]
   mat_tmp <- mat_dist
   mat_tmp[unrel_rows,] <- NA
   mat_tmp[,unrel_rows] <- NA
-  #print(main_muts)
-  #print(mat_phased)
   mat_tmp[c((length(main_muts)+1):nrow(mat_phased)),] <- NA
-  #print(2)
   unphased <- which(is.na(mat_phased))
   relevant_dists <- mat_tmp[unphased] 
   relevant_dists[which(relevant_dists==0)] <- NA
-  #print(3)
   shortest <- unphased[which(relevant_dists==min(relevant_dists, na.rm=T))] 
   ## pick first one, if two have the same distance
-  #print(shortest)
-  #print(mat_phased)
   if(length(shortest)==0){
     #stop("stop_here")
     main_mut_conns <- get_main_mut_conns()
@@ -230,31 +185,21 @@ prioritize_combination <- function(){
                      n=main_mut_conns)
     uc <- unknown_main()
     if(length(uc)>0){
-      #print(uc)
-      #print(mat_phased)
-      #print(df_mmc)
       df_unknown_pre <- lapply(uc, function(C){
         sort(get_xy_index(C, nrow(mat_phased))) %>%
           paste0("m",.) %>%
           set_names(c("m1", "m2")) %>%
           c(.,comb=C)
       }) %>%
-        bind_rows() #%>%
-      #print(df_unknown_pre)
+        bind_rows() 
       df_unknown <- df_unknown_pre %>%
-        #mutate_at(.vars = c("m1", "m2"), .funs = paste0) %>%
         left_join(df_mmc %>% select(m, n1=n), by=c("m1"="m")) %>%
         left_join(df_mmc %>% select(m, n2=n), by=c("m2"="m")) %>%
         filter(n1>0&n2>0)
-     
-     # print(df_unknown)
-      
       if(nrow(df_unknown)>0){
         ## now check available paths
         next_path <- get_next_path(df_unknown[1,]$comb)
-        
         if(!is.null(next_path)){
-          #print(next_path)
           next_comb <- get_xy_index(next_path, nrow(mat_phased))
         } else {
           next_comb <- NULL
@@ -265,7 +210,6 @@ prioritize_combination <- function(){
     }else {
       next_comb <- NULL
     }
-
   } else {
     next_comb <- get_xy_index(shortest[1], nrow(mat_phased))
   }
@@ -298,19 +242,13 @@ aggregate_phasing <- function(all_combs, df_gene, phasing_info){
         str_split("-") %>% 
         unlist() %>%
         as.numeric()
-      
       extracted_combs <- phasing_info %>% filter(comb %in% used_combs) 
-      
-      #print(used_combs)
       conf <- extracted_combs %>%
         mutate(ep=ifelse(nstatus==2, 1-p_same, 1-p_diff)) %>%
         pull(ep) %>%
         prod()
-      
       unplausible <- paste(as.numeric(extracted_combs$unplausible), collapse="-")
       subclonal <- paste(as.numeric(extracted_combs$subclonal), collapse="-")
-      #print(11111111111111111111)
-      #print(conf)
       via <- as.character(mat_info[mmp])
       phasing=case_when(
         str_detect(mat_info[mmp], "h") ~ "haploblock",
@@ -325,14 +263,9 @@ aggregate_phasing <- function(all_combs, df_gene, phasing_info){
       score <- case_when(
         nstatus==2&wt_cp<0.5 ~ 2,
         TRUE ~ 1)
-
-      
-     # min_poss_wt_cp <- NA
-    #  max_poss_wt_cp <- NA
     } else {
       ## status could not be defined
       ## calculate maximum possible affected copies
-
       conf <- 0
       unplausible <- NA
       subclonal <- NA
@@ -346,8 +279,6 @@ aggregate_phasing <- function(all_combs, df_gene, phasing_info){
         score==1 ~ "exclusion",
         TRUE ~ NA
       )
-
-      
     }
     phasing_status <- tibble(comb=comb, nstatus=nstatus, status=status, 
                              phasing=phasing, via=via, conf=conf, unplausible=unplausible,
@@ -503,7 +434,7 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
 }  
 #' @keywords internal
 #' @importFrom stringr %>%
-#' @importFrom dplyr tibble 
+#' @importFrom dplyr tibble bind_rows 
 classify_reads <- function(ref_pos1,
                            ref_pos2,
                            ref_chr1,
@@ -515,25 +446,6 @@ classify_reads <- function(ref_pos1,
                            ref_class1,
                            ref_class2, bamDna, bamRna, verbose){
   vm(as.character(sys.call()[1]), verbose, 1)
-  #dist <- abs(as.numeric(line[['pos1']])-as.numeric(line[['pos2']]))
-  
-  # ref_pos1 <- as.numeric(mat_gene_relcomb[,"pos"][[2]])  
-  # ref_pos2 <- as.numeric(mat_gene_relcomb[,"pos"][[1]])
-  # 
-  # ref_chr1 <- as.numeric(mat_gene_relcomb[,"chr"][[2]])  
-  # ref_chr2 <- as.numeric(mat_gene_relcomb[,"chr"][[1]])
-  # 
-  # ref_alt1 <- as.character(mat_gene_relcomb[,"alt"][[2]])
-  # ref_alt2 <- as.character(mat_gene_relcomb[,"alt"][[1]]) 
-  # 
-  # ref_ref1 <- as.character(mat_gene_relcomb[,"ref"][[2]])
-  # ref_ref2 <- as.character(mat_gene_relcomb[,"ref"][[1]])
-  # 
-  # ref_class1 <- as.character(mat_gene_relcomb[,"class"][[2]])
-  # ref_class2 <- as.character(mat_gene_relcomb[,"class"][[1]])
-  #vm(line, verbose)
-  #print(ref_class1)
-  #print(ref_class2)
   bam <- check_for_overlapping_reads(bamDna,
                                      bamRna,
                                      ref_chr1,
@@ -541,11 +453,7 @@ classify_reads <- function(ref_pos1,
                                      ref_pos1,
                                      ref_pos2, 
                                      verbose)
-  ##prind(1bam)
-  ##prind(1ref_ref1)
-  ##prind(1ref_ref2)
   if(!length(bam)==0){  
-    #vm("reads detected, applying core function", verbose, 1)
     classified_reads <- lapply(unique(bam$qname),
                                core_tool,
                                bam, 
@@ -558,15 +466,8 @@ classify_reads <- function(ref_pos1,
                                ref_class1,
                                ref_class2,
                                verbose) %>%
-      bind_rows() #%>%
-    #  rowwise() %>%
-    #  mutate(baseq1_conv=ascii_to_dec(baseq1),
-    #         baseq2_conv=ascii_to_dec(baseq2))
-    
-    #vm("reads classified", verbose, 1)
-    
+      bind_rows() 
   } else {
-    #vm("no reads detected, return empty df", verbose, 1)
     classified_reads <- tibble()
   } 
   func_end(verbose)
@@ -586,12 +487,9 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna, verbose, g
   
   ref_pos1 <- as.numeric(mat_gene_relcomb[,"pos"][[mut1]])  
   ref_pos2 <- as.numeric(mat_gene_relcomb[,"pos"][[mut2]])
-  
   ## must be character to work for annotations like: chrX
   ref_chr1 <- as.character(mat_gene_relcomb[,"chr"][[mut1]])  
   ref_chr2 <- as.character(mat_gene_relcomb[,"chr"][[mut2]])
-  
-  
   
   ref_alt1 <- as.character(mat_gene_relcomb[,"alt"][[mut1]])
   ref_alt2 <- as.character(mat_gene_relcomb[,"alt"][[mut2]]) 
@@ -635,7 +533,7 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna, verbose, g
         phasing=comb
       ) 
   }   
-  append_matrices(classified_main_comb)
+  #append_matrices(classified_main_comb)
   func_end()
   return(classified_main_comb)
 }
@@ -643,22 +541,10 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
   func_start()
   mat_old <- mat_phased
   lapply(seq(1,nrow(classified_main_comb)), function(C){
-    #print(classified_main_comb[C,]$comb)
-    #print(classified_main_comb[C,]$nstatus)
-    #split_list <- str_split(classified_main_comb[C,]$comb, "-") %>% unlist()
-    #print(split_list)
-    #mat_phased[split_list[1], split_list[2]] <<- classified_main_comb[C,]$nstatus
-    #mat_conf[split_list[1], split_list[2]] <<- classified_main_comb[C,]$conf
-    mat_phased[classified_main_comb[C,]$comb] <<- classified_main_comb[C,]$nstatus
-    ##print(mat_phased)
-    ##print(length(mat_phased))
-    ##print(dim(mat_phased))
-    ##print(nrow(mat_phased))
-    ##print(ncol(mat_phased))
-    #mat_phased[classified_main_comb[C,]$comb] <<- 1
-    #mat_conf[classified_main_comb[C,]$comb] <<- classified_main_comb[C,]$conf
-    mat_info[classified_main_comb[C,]$comb] <<- classified_main_comb[C,]$phasing
-    #print(mat_phased)
+    mat_phased[classified_main_comb[C,]$comb] <<- 
+      classified_main_comb[C,]$nstatus
+    mat_info[classified_main_comb[C,]$comb] <<- 
+      classified_main_comb[C,]$phasing
     return()
   })
   if(iterate==TRUE){
@@ -668,52 +554,26 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
     mat_old[is.na(mat_old)] <- 0
     changes <- which(!mat_new==mat_old) 
     i <- 1
-    ##solved_master_combs <<- list()
     while(i<=length(changes)){
-     #message("left changes:", changes)
-      ## something changed
-      ##print("something changed")
-      ## get mut/snp ids that have changed
       m12 <- get_xy_index(changes[i], nrow(mat_new))
       status <- mat_new[changes[i]]
       ## get third mut/snp id that also has a non-null connection to one of the first ones 
       m1_same_conn <- c(m12[1], which(mat_new[m12[1],]==1),
                         which(mat_new[,m12[1]]==1)) %>% sort()
-      
       m2_same_conn <- c(m12[2],
                         which(mat_new[m12[2],]==1),
                         which(mat_new[,m12[2]]==1)) %>% sort()
-      
       if(sum(c(length(m1_same_conn), length(m2_same_conn)))>2){
         if(status==1){
-         #print("state 1")
           conns <- sort(unique(c(m1_same_conn, m2_same_conn)))
           for(x in 1:(length(conns)-1)){
-            #print(i)
             for(j in (x+1):length(conns)){
-              ##print(j)
-             #message(paste(conns[x],conns[j], sep="-"))
               p1 <- conns[x]
               p2 <- conns[j]
-             #print(p1)
-             #print(p2)
-             #print(m12)
-             #print(which(!m12 %in% c(p1,p2)))
-              
               notxf <- m12[which(!m12 %in% c(p1,p2))]
-              #print(notx)
-             #print(111111)
-             #print(notxf)
-             #print(length(notxf))
-              
-              
-              
               if(length(notxf)>=1){
                 notx <- min(notxf)
-               ##print(mat_phased[p1,p2])
                 if(is.na(mat_phased[p1,p2])|mat_phased[p1,p2]==0){
-                 #print("change mat_info")
-                  #print(mat_info)
                   combined_info <- paste(
                     c(mat_info[
                       min(c(notx, p1)),
@@ -724,7 +584,6 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
                     ]), 
                     collapse="-")
                   mat_info[p1,p2] <<- combined_info   
-                  #print(combined_info)
                 }
               } 
               if(is.na(mat_phased[p1,p2])|mat_phased[p1,p2]==0){
@@ -733,19 +592,12 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
             }
           }
         } else {
-         #print("state 2")
-          ## if status == diff
           for(x in m1_same_conn){
-            #print(i)
             for(j in m2_same_conn){
-              ##print(j)
-              #print(paste(conns[i],conns[j], sep="-"))
               sv <- sort(c(x,j))
               p1 <- sv[1]
               p2 <- sv[2]
-              
               notxf <- m12[which(!m12 %in% c(x,j))]
-              
               if(length(notxf)>=1){
                 notx <- min(notxf)
                 if(is.na(mat_phased[p1,p2])|mat_phased[p1,p2]==0){
@@ -772,37 +624,33 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
     } 
   }
   func_end()
-  #print(mat_phased)
 }
 
 perform_direct_phasing <- function(mat_gene, bamDna, bamRna, purity, 
                                    verbose, printLog, showReadDetail, geneDir){
   func_start()
-  #phasingDir <- NULL
   phasing_type <- "direct"
-  # if(!is.null(geneDir)){
-  #   phasingDir <- file.path(geneDir, phasing_type)
-  #   dir.create(phasingDir)
-  # }
- #print(mat_phased)
- #print(mat_info)
   phasing_info <- tibble()
   unphased <- which(is.na(mat_phased))
-  while(length(unphased)>0){
-    #print(unphased)
+  i <- 1
+  while(i <= length(unphased)){
+  #for(i in seq(1,,1)){
+  #while(length(unphased)>0){
     ## as long as there are unphased combinations, try to phase
-    relcombxy <- get_xy_index(unphased[1], nrow(mat_phased))
+    comb <- unphased[i]
+    print(unphased)
+    print(comb)
+    relcombxy <- get_xy_index(comb, nrow(mat_phased))
     mat_gene_relcomb <- mat_gene[relcombxy,]
-    comb <- unphased[1]
+    
     classified_main_comb <- phase_combination(mat_gene_relcomb, comb, bamDna, bamRna, 
                                               verbose, geneDir, phasing_type, showReadDetail)
-   #print(mat_phased)
-   #print(mat_info)
     phasing_info <- bind_rows(phasing_info,
                               classified_main_comb)
-    unphased <- which(is.na(mat_phased))
+    #unphased <- which(is.na(mat_phased))
+    i <- i+1
   }
-
+  append_matrices(phasing_info)
   func_end()
   return(list(status=NULL,
               info=phasing_info,
@@ -827,9 +675,7 @@ phase <- function(df_gene, bamDna, bamRna,
   } else {
     geneDir <- NULL
   }
-  ##prind(1df_gene)
   ## (1): define all combinations of variants to be phased
-  #all_combinations <- make_phasing_combinations(df_gene) 
   create_phasing_matrices(df_gene$mut_id, df_gene$pos, distCutOff)
   solved_master_combs <<- list()
   mat_gene <- as.matrix(df_gene)
@@ -846,17 +692,14 @@ phase <- function(df_gene, bamDna, bamRna,
                                            purity, verbose, printLog, 
                                            showReadDetail, geneDir)
   phasing_info <- direct_phasing$info
-  #print(phasedVcf)
   if(length(unknown_main())>0&!is.null(phasedVcf)){
     append_loglist("unphased combinations left --> Initialize SNP phasing")
     ## missing combinations in main muts --> start secondary phasing approaches
     lsnps <- load_snps(df_gene, phasedVcf, haploBlocks, refGen, distCutOff, verbose, somCna, snpQualityCutOff)
     store_log(geneDir, lsnps, "lsnps.tsv")
-    #print(lsnps)
     if(!is.null(lsnps)){
       snps <- lsnps %>%
         ## filter low quality
-
         rowwise() %>%
         mutate(
           aff_cp=ifelse(is.na(af)|is.na(tcn),
@@ -886,24 +729,16 @@ phase <- function(df_gene, bamDna, bamRna,
 
           )
         )
-     #print(mat_phased)
       append_phasing_matrices(snps$mut_id, snps$start, distCutOff)
-     #print(mat_phased)
-     #print(snps)
       add_snps_to_matrices(snps)
-     #print(mat_phased)
       ## build main daatframe of muts and snps and annotate haploblocks and segments of allelic imbalance
       df <- bind_rows(
         df_gene %>% select(chr, pos, ref, alt, class, af, mut_id),
         snps %>% select(chr=seqnames, pos=start, ref=REF, alt=ALT, af, mut_id, gt=gt_final) %>% mutate(class="snp")
       )
-
-
       to_phase <- prioritize_combination()
       i <- 1
       while(!is.null(to_phase)&length(unknown_main())>0){
-        #print(to_phase)
-        #print(unknown_main())
         append_loglist("Phasing combination:", paste(paste0(to_phase), collapse="-"))
 
         mat_gene_relcomb <- df[to_phase,] %>% as.matrix()
@@ -914,19 +749,13 @@ phase <- function(df_gene, bamDna, bamRna,
         classified_main_comb <- phase_combination(mat_gene_relcomb, comb,
                                                   bamDna, bamRna, verbose, 
                                                   geneDir, comb, showReadDetail)
-        #print(classified_main_comb)
+        append_matrices(classified_main_comb)
         phasing_info <- bind_rows(phasing_info,
                                   classified_main_comb)
-        #print(main_muts)
-        #print(snps$mut_id)
         to_phase <- prioritize_combination()
         i <- i +1
-        #print(to_phase)
-        #print(mat_phased[c(1:4), c(1:4)])
       }
-      #print(df)
       store_log(geneDir, df, "df_snps_muts.tsv")
-      #print(phasing_info)
       store_log(geneDir, phasing_info, "all_indirect_phasing_combinations.tsv")
     }## no snps found
   }
@@ -937,7 +766,6 @@ phase <- function(df_gene, bamDna, bamRna,
   ## reconstruct phasing results
   main_pos <- get_main_mut_pos()
   uppertri <- which(upper.tri(mat_phased))
-  #solved <- main_pos[which(mat_phased[main_pos]>0)]
   all_combs <- intersect(main_pos, uppertri)
   phasing_all_combs <- aggregate_phasing(all_combs, df_gene, phasing_info)
  if(nrow(phasing_info)==0){
@@ -962,12 +790,581 @@ phase <- function(df_gene, bamDna, bamRna,
 
   
   store_log(geneDir, as_tibble(mat_phased), "mat_phased.tsv")
-  #print(3)
-  #print(as_tibble(mat_info))
   store_log(geneDir, as_tibble(mat_info), "mat_info.tsv")
-  #print(4)
   store_log(geneDir, phasing_info, "all_phasing_combinations.tsv")
   func_end()
   return(list(phasing_all_combs, phasing_info_export, mat_phased, mat_info))
   
+}
+calc_left_wt_copies <- function(mtcn, nstatus, aff_copies1, aff_copies2){
+  left_wt_copies <- ifelse(nstatus==2,
+                           mtcn-sum(as.numeric(aff_copies1), 
+                                    as.numeric(aff_copies2)),
+                           mtcn-max(as.numeric(aff_copies1), 
+                                    as.numeric(aff_copies2)))
+  return(as.numeric(left_wt_copies))
+}
+
+
+make_both_annotations <- function(region_to_load_in){
+  sec <- region_to_load_in %>%
+    as_tibble()
+  if(str_detect(sec$seqnames[1],"chr")){
+    prim <- sec %>%
+      mutate(seqnames=str_replace_all(seqnames, "chr", "")) %>%
+      GRanges()
+  } else {
+    prim <- sec %>%
+      mutate(seqnames=paste0("chr",seqnames)) %>%
+      GRanges()
+  }
+  fin <- c(region_to_load_in, prim)
+  return(fin)
+}
+
+
+loadVcf <- function(vcf_in, chrom, region_to_load_in, refGen, verbose, somCna,which="all",
+                    colname_gt="GT", colname_af="AF", colname_dp4="DP4", 
+                    dkfz=FALSE){
+  func_start(verbose)
+  ## first check which format input vcf has
+  region_to_load <- make_both_annotations(region_to_load_in)
+  chr_anno <- as_tibble(region_to_load_in) %>%
+    pull(seqnames) %>% .[1] %>% str_detect("chr")
+  gr_list <- lapply(vcf_in, function(VCF){
+    if(is(VCF, "TabixFile")){
+      if(chrom %in% Rsamtools::seqnamesTabix(VCF)){
+        loadedVcf <- 
+          readVcf(VCF, refGen, 
+                  param=region_to_load)
+        combVcf <- rowRanges(loadedVcf) 
+        if(length(combVcf)>0){
+          combVcf$ALT <- unlist(lapply(combVcf$ALT, 
+                                       function(x){as.character(x[[1]][1])}))
+          gt <- VariantAnnotation::geno(loadedVcf)[[colname_gt]][,1] %>% 
+            as.character()
+          af <- VariantAnnotation::info(loadedVcf)[[colname_af]]
+          dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]] 
+          combVcf$gt <- gt
+          combVcf$dp4 <- dp4
+          combVcf$af <- af
+          vcf_info <- "variants_detected"
+        } else {
+          combVcf <- NULL
+          vcf_info <- "no snps in roi"
+        }
+      } else {
+        combVcf <- NULL
+        vcf_info <- "vcf does not cover chromosome"
+      }
+    } else {
+      if(str_detect(VCF, paste0("chr", 
+                                unlist(str_replace(chrom, "chr", "")), 
+                                "[^0-9]"))){
+        loadedVcf <- VariantAnnotation::readVcf(VCF, refGen)
+        gt <- VariantAnnotation::geno(loadedVcf)[[colname_gt]] %>% 
+          as.character()
+        af <- VariantAnnotation::info(loadedVcf)[[colname_af]] 
+        dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]]
+        rangesVcf <- rowRanges(loadedVcf) 
+        rangesVcf$gt <- gt
+        rangesVcf$af <- af
+        rangesVcf$dp4 <- dp4
+        combVcf <-  subsetByOverlaps(rangesVcf, region_to_load) 
+        if(length(combVcf)>0){
+          combVcf$ALT <- unlist(lapply(combVcf$ALT, 
+                                       function(x){as.character(x[[1]][1])}))
+          combVcf <- as_tibble(combVcf) %>%
+            mutate(seqnames=case_when(
+              chr_anno==TRUE&!str_detect(seqnames, "chr") ~ paste0("chr",seqnames),
+              chr_anno==FALSE&str_detect(seqnames, "chr") ~ str_replace_all(seqnames, "chr", ""),
+              TRUE ~ seqnames
+              
+            )) %>%
+            GRanges()
+          vcf_info <- "variants_detected"
+        } else {
+          combVcf <- NULL
+          vcf_info <- "no snps in roi"
+        }
+      } else {
+        combVcf <- NULL
+        vcf_info <- "no vcf file covering roi"
+      }
+    }
+    return(list(combVcf, vcf_info))
+  }) 
+  final_vcf <- lapply(gr_list, nth, 1) %>%
+    compact() %>%
+    Reduce(function(x,y)c(x,y),.)
+  if(which=="HZ"){
+    filtered_vcf <- final_vcf[which(final_vcf$gt %in% c("1/0", "0/1", "1|0", "0|1"))]
+  } else {
+    filtered_vcf <- final_vcf
+  }
+  func_end(verbose)
+  return(filtered_vcf)
+}
+get_string_status <- function(nstatus){
+  case_when(nstatus==2 ~ "diff",
+            nstatus==1 ~ "same",
+            TRUE ~ "null"
+  )
+}
+load_snps <- function(df_gene, phasedVcf, haploBlocks, refGen, distCutOff, verbose, somCna, snpQualityCutOff, which="all"){
+  func_start()
+  region_to_load <- paste0(unique(df_gene$chr), ":", min(df_gene$pos)-distCutOff,
+                           "-", max(df_gene$pos)+distCutOff) %>%
+    GRanges()  %>%
+    split_genomic_range(.,df_gene$pos)
+  
+  loaded_vcf_hz <- loadVcf(phasedVcf, unique(df_gene$chr), region_to_load, refGen, 
+                           verbose, somCna)
+  if(length(loaded_vcf_hz)>0){
+    fsnps <- loaded_vcf_hz %>% as_tibble() %>%
+      filter(!is.na(QUAL)&QUAL>snpQualityCutOff) %>%
+      filter(gt %in% c("1|0", "0|1", "1/0", "0/1"))
+    
+    if(nrow(fsnps)>0){
+      snps <- fsnps %>%
+        mutate(mut_id=paste0("s", c(1:nrow(.))+nrow(df_gene)))
+      
+      
+      append_loglist(nrow(snps), "SNPs detected in distCutOff range")
+      
+      if(!"af" %in% names(snps)){
+        if("dp4" %in% names(snps)){
+          snps$af <- lapply(seq(1,nrow(snps)), function(i){
+            sum(snps$dp4[[i]][c(3,4)])/sum(snps$dp4[[i]])
+          }) %>% as.numeric()  
+        } 
+      } 
+      
+      
+      gr_snps <- GRanges(snps %>% select(1:3, mut_id))
+      #print(gr_snps)
+      #print(haploBlocks)
+      if(!is.null(haploBlocks)){
+        merged_haploblocks <- mergeByOverlaps(gr_snps, haploBlocks) %>%
+          as_tibble() %>%
+          select(all_of(names(.) %>% .[which(!str_detect(.,"\\."))]))    
+      } else {
+        merged_haploblocks <- snps %>% select(mut_id) %>%
+          mutate(hap_id=NA)
+      }
+      
+      merged_somCna <- mergeByOverlaps(gr_snps, somCna) %>%
+        as_tibble() %>%
+        select(all_of(names(.) %>% .[which(!str_detect(.,"\\."))]))
+      #print(merged_haploblocks)
+      #print( merged_somCna)
+      annotated_snps <- left_join(
+        snps,
+        merged_haploblocks,
+        by="mut_id"
+      ) %>%
+        left_join(
+          .,
+          merged_somCna,
+          by="mut_id"
+        )   
+      
+    } else {
+      ## no high quality and heterozygous snps
+      annotated_snps <- NULL
+    }
+  } else {
+    ## no snps detected
+    annotated_snps <- NULL
+  }
+  
+  #print(annotated_snps)
+  func_end()
+  return(annotated_snps)
+}
+
+get_genotype <- function(gt, status){
+  if(status=="same"){
+    return(gt)
+  } else if(gt=="1|0"){
+    return("0|1")
+  } else if(gt=="0|1"){
+    return("1|0")
+  } 
+}
+aggregate_probs <- function(ps){
+  if(length(ps)>1){
+    np <- ps[1]
+    for (n in seq(1, length(ps)-1, 1)){
+      np <- np+(1-np)*ps[n+1]
+    }
+    return(np)    
+  } else {
+    return(ps) 
+  }
+}
+
+extract_subseq <- function(ref_pos, element_mut, parsed_read, 
+                           length_indel, string){
+  pos_in_seq <- ref_pos-element_mut$map_start+1
+  subseq_in_element <- str_sub(element_mut[[string]], start=pos_in_seq, 
+                               end=-1)
+  subseq_in_following_elements <- 
+    parsed_read[
+      which(as.numeric(parsed_read$id)>as.numeric(element_mut$id)),] %>%
+    pull(all_of(string)) %>%
+    na.omit() %>%
+    paste(collapse="")
+  full_remaining <- paste0(subseq_in_element, subseq_in_following_elements)
+  return(str_sub(full_remaining, start=1, end=length_indel))
+}
+
+
+extract_snv <- function(ref_pos, element_mut){
+  ## get cigar element in which reference position in located
+  pos_in_seq <- ref_pos-element_mut$map_start+1
+  base <- 
+    str_sub(element_mut$seq,
+            start=pos_in_seq,
+            end=pos_in_seq) 
+  qual <- 
+    str_sub(element_mut$qual,
+            start=pos_in_seq,
+            end=pos_in_seq)  
+  return(tibble(base=base, qual=qual, info="mapped", len_indel=NA,
+                exp_indel=NA))
+}
+
+extract_insertion <- function(ref_pos, parsed_read, element_mut, length_ins){
+  ## insertion are always indicated by the I type. The reference position tells
+  ## the position in front of the I segment, which means we are looking for
+  ## the subsequent one type
+  expected_indel_detected <- FALSE
+  len <- NA
+  if(as.numeric(element_mut$id)==nrow(parsed_read)){
+    if(ref_pos==element_mut$map_end){
+      info <- 
+        "no insertion detected: ref pos is last mapped base of read" 
+    } else {
+      info <- 
+        "no insertion detected: ref pos mapped in last element of parsed read"      
+    }
+    base <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "seq")
+    #qual <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "qual")
+  } else if("I" %in% parsed_read$type){
+    ## insertion detected... check if it is the matching one
+    if(ref_pos==element_mut$map_end){
+      ## if insertion is at refrence position, the subsequent position is an a
+      ## new elemnt labelled as I
+      next_element <- parsed_read[as.numeric(element_mut$id)+1,]
+      if(next_element$type=="I"){
+        ## insertion detected at position.. extract inserted sequence
+        base <- paste0(
+          str_sub(element_mut$seq, start=-1, end=-1),
+          next_element$seq
+        )
+        #  qual <- paste0(
+        #   str_sub(element_mut$qual, start=-1, end=-1),
+        #  next_element$qual
+        #)
+        info <- "insertion detected"
+        len <- next_element$width
+        expected_indel_detected <- TRUE
+      } else {
+        info <- paste(next_element$type, "detected - wrong class")
+        base <- extract_subseq(ref_pos, element_mut, parsed_read, length_ins, 
+                               "seq")
+        #qual <- extract_subseq(ref_pos, element_mut, parsed_read, length_ins, 
+        #                      "qual")
+      }
+    } else {
+      info <- "no insertion detected: ref pos not mapped to end of element"
+      base <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "seq")
+      # qual <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "qual")
+    }
+  } else {
+    ## no inserttion detected.. extract base at position to get base quality
+    info <- "no insertion detected: no I in cigar"
+    base <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "seq")
+    # qual <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "qual")
+  }
+  ## qual is set to null, as we only take the mapping quality for indels
+  return(tibble(base=base, qual=0, info=info, len_indel=len, 
+                exp_indel=expected_indel_detected))
+}
+
+extract_deletion <- function(ref_pos, parsed_read, element_mut, length_del){
+  expected_indel_detected <- FALSE
+  len <- NA
+  if(as.numeric(element_mut$id)==nrow(parsed_read)){
+    if(ref_pos==element_mut$map_end){
+      info <- 
+        "no deletion detected: ref pos is last mapped base of read" 
+    } else {
+      info <- 
+        "no delection detected: ref pos mapped in last element of parsed read"      
+    }
+    base <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "seq")
+    # qual <- extract_subseq(ref_pos, element_mut, parsed_read, 1, "qual")
+  } else if("D" %in% parsed_read$type){
+    ## insertion detected... check if it is the matching one
+    if(ref_pos==element_mut$map_end){
+      ## if insertion is at refrence position, the subsequent position is an a
+      ## new elemnt labelled as D
+      next_element <- parsed_read[as.numeric(element_mut$id)+1,]
+      if(next_element$type=="D"){
+        expected_indel_detected <- TRUE
+        info <- "deletion detected"
+        len <- next_element$width
+      } else {
+        info <- "no deletion detected: subsequent element not I"
+      }
+    } else {
+      info <- "no insertion detected: ref pos not mapped to end of element"
+    }      
+    base <- extract_subseq(ref_pos, element_mut, parsed_read, length_del, 
+                           "seq")
+    #qual <- extract_subseq(ref_pos, element_mut, parsed_read, length_del, 
+    #                      "qual")
+  } else {
+    ## no inserttion detected.. extract base at position to get base quality
+    info <- "no insertion detected: no I in cigar"
+    base <- extract_subseq(ref_pos, element_mut, parsed_read, length_del, 
+                           "seq")
+    #qual <- extract_subseq(ref_pos, element_mut, parsed_read, length_del, 
+    #                      "qual")
+  }
+  ## qual is set to null, as we only take the mapping quality for indels
+  return(tibble(base=base, qual=0, info=info, len_indel=len,
+                exp_indel=expected_indel_detected))
+}
+
+cigar_element <- function(parsed_read, ref_pos){
+  #func_start()
+  cigel <- parsed_read[which(between(rep(ref_pos, nrow(parsed_read)), 
+                                     parsed_read$map_start, 
+                                     parsed_read$map_end)),] %>%
+    .[1,]
+  #func_end()
+  return(cigel)
+}
+
+extract_base_at_refpos <- function(parsed_read, ref_pos, class, ref_alt, 
+                                   ref_ref){
+  #func_start()
+  ## extract elemnt containing reference position from parsed read
+  element_mut <- cigar_element(parsed_read, ref_pos)
+  ## if position is inside N or D type, the read does not cover the position
+  ## N means for example skipped exon in RNA
+  ## D wouldmean the position is deleted
+  ## real deletions are still mapped in the M part
+  if(element_mut$type %in% c("N", "D")){
+    base_info <- tibble(base=NA, qual=NA, info="position skipped/deleted", 
+                        len_indel=NA, exp_indel=NA)
+  } else if(class %in% c("snv", "snp")){
+    base_info <- extract_snv(ref_pos, element_mut)
+  } else if(class=="ins"){
+    base_info <- extract_insertion(ref_pos, parsed_read, element_mut, 
+                                   nchar(ref_alt)-nchar(ref_ref))
+  } else if(class=="del"){
+    base_info <- extract_deletion(ref_pos, parsed_read, element_mut, 
+                                  1+abs(nchar(ref_ref)-nchar(ref_alt)))
+  } else {
+    stop("class of variant needs to be provided")
+  }
+  #func_end()
+  return(base_info %>% mutate(class=class, mapq=element_mut$mapq))
+}
+
+#' @keywords internal
+#' @importFrom stringr %>% str_replace str_sub
+#' @importFrom dplyr between case_when rowwise filter
+check_mut_presence <- function(read_structure, ref_pos,
+                               ref_alt, ref_ref, ref_class, verbose=FALSE){
+  map_start <- map_end <- . <- NULL
+  ## check if read is spanned out:
+  element_mut <- read_structure %>% rowwise() %>%
+    filter(between(ref_pos, map_start, map_end)) %>%
+    .[1,]
+  if(element_mut$type %in% c("N", "D")){
+    mut_at_read <- -10
+  } else {
+    if(ref_class %in% c("snv", "snp")){
+      pos_in_seq <- ref_pos-element_mut$map_start+1
+      base <- 
+        str_sub(element_mut$seq,
+                start=pos_in_seq,
+                end=pos_in_seq) 
+      qual <- 
+        str_sub(element_mut$qual,
+                start=pos_in_seq,
+                end=pos_in_seq)
+      mut_at_read <- case_when(
+        base==ref_alt ~ 1,
+        base==ref_ref ~ 0,
+        TRUE ~ -2
+      ) 
+    } else if(ref_class=="ins"){
+      cat_at_pos <- 
+        read_structure[which(read_structure$map_end==ref_pos)+1,] %>%
+        .[which(.$type=="I"),] 
+      if(nrow(cat_at_pos)==0){
+        mut_at_read <- 0
+        base <- NA
+        qual <- NA
+      } else {  
+        length_ins <- str_replace(ref_alt, paste0("^", ref_ref), "") %>%
+          nchar()
+        if(length_ins==cat_at_pos[1,]$width){
+          mut_at_read <- 1
+        } else {
+          mut_at_read <- -2
+        }
+        base <- cat_at_pos[1,]$seq
+        qual <- cat_at_pos[1,]$qual
+      }
+    } else if(ref_class=="del"){
+      cat_at_pos <- 
+        read_structure[which(read_structure$map_end==ref_pos)+1,]%>%
+        .[which(.$type=="D"),]
+      
+      if(nrow(cat_at_pos)==0){
+        mut_at_read <- 0
+        base <- NA
+        qual <- NA
+      } else {  
+        length_del <- str_replace(ref_ref, paste0("^", ref_alt), "") %>%
+          nchar()
+        base <- NA
+        qual <- NA
+        if(length_del==cat_at_pos[1,]$width){
+          mut_at_read <- 1
+        } else {
+          mut_at_read <- -2
+        }
+      }
+    }
+  }
+  return(tibble(base=base,
+                qual=qual,
+                mut_at_read=mut_at_read))
+}
+parse_cigar <- function(bam, qname){
+  #func_start()
+  paired_reads <- bam[which(bam$qname==qname)] 
+  read_start <- GenomicAlignments::start(paired_reads)
+  seq <- as.character(paired_reads$seq)
+  cigar <- paired_reads$cigar
+  qual <- as.character(paired_reads$qual)
+  mate <- c(1,2)
+  ## parse cigar string according to query
+  cigq <- GenomicAlignments::cigarRangesAlongQuerySpace(cigar,
+                                                        with.ops = T) 
+  ## parse cigar string according to reference
+  cigr <- GenomicAlignments::cigarRangesAlongReferenceSpace(cigar,
+                                                            with.ops = F) 
+  raw_cigs <- lapply(mate, function(i){
+    cigq_start <- GenomicAlignments::start(cigq[[i]])
+    cigq_end <- GenomicAlignments::end(cigq[[i]])
+    cigq_len <- length(cigq_start)
+    cigr_start <- GenomicAlignments::start(cigr[[i]])
+    cigr_end <- GenomicAlignments::end(cigr[[i]])
+    seqq <- str_sub(seq[i],
+                    start=cigq_start,
+                    end=cigq_end) %>% na_if("")
+    qualq <- str_sub(qual[i],
+                     start=cigq_start,
+                     end=cigq_end) %>% na_if("")
+    width=pmax(GenomicAlignments::width(cigq[[i]]), 
+               GenomicAlignments::width(cigr[[i]]))
+    map_start=read_start[i]+cigr_end-width
+    map_end=read_start[i]+cigr_end-1
+    raw_cigs_new <- data.frame(
+      width=width,
+      type=names(cigq[[i]]),
+      seq=seqq,
+      qual=qualq,
+      map_start=map_start,
+      map_end=map_end,
+      start=cigr_start,
+      end=cigr_end,
+      mate=mate[i],
+      mapq=paired_reads$mapq[i],
+      origin=paired_reads$origin[i]
+    )
+  }) %>%
+    bind_rows() %>%
+    mutate(id=c(1:nrow(.)))
+  #func_end()
+  return(raw_cigs)
+}
+evaluate_base <- function(base_info, ref_alt, ref_ref){
+  #func_start()
+  if(base_info$class %in% c("snv", "snp")){
+    detected <- case_when(
+      base_info$base==ref_alt ~ 1,
+      base_info$base==ref_ref ~ 0,
+      TRUE ~ -2
+    )
+  } else if(base_info$class=="ins"){
+    detected <- case_when(
+      base_info$base==ref_alt ~ 1,
+      base_info$base==ref_ref ~ 0,
+      TRUE ~ -2
+    )
+  } else {
+    detected <- case_when(
+      base_info$len_indel==abs(nchar(ref_alt)-nchar(ref_ref)) ~ 1,
+      is.na(base_info$len_indel) ~ 0,
+      TRUE ~ -2
+    )
+  }
+  #func_end()
+  return(detected)
+}
+#' @keywords internal
+#' description follows
+#' @importFrom stringr %>%
+#' @importFrom tibble column_to_rownames rownames_to_column
+#' @importFrom purrr set_names
+#' @importFrom dplyr case_when bind_rows as_tibble mutate
+#' @importFrom GenomicRanges seqnames
+core_tool <- function(qname, bam,
+                      ref_pos1, ref_pos2,
+                      ref_alt1, ref_alt2,
+                      ref_ref1, ref_ref2,
+                      ref_class1, ref_class2,
+                      verbose=FALSE, version="old"){
+  #vm("core_tool", verbose, 1)
+  . <- NULL
+  ## parse read according to cigar string
+  parsed_read <- parse_cigar(bam, qname)
+  ## extract base at reference position
+  base_info1 <- extract_base_at_refpos(parsed_read, ref_pos1, ref_class1, 
+                                       ref_alt1, ref_ref1)
+  base_info2 <- extract_base_at_refpos(parsed_read, ref_pos2, ref_class2, 
+                                       ref_alt2, ref_ref2)
+  ## assign final status to read
+  if(is.na(base_info1$base)|is.na(base_info2$base)){
+    final_assignment <- "skipped"
+  } else {
+    mut1_in_read <- evaluate_base(base_info1, ref_alt1, ref_ref1)
+    mut2_in_read <- evaluate_base(base_info2, ref_alt2, ref_ref2)
+    final_assignment <- case_when(
+      sum(mut1_in_read, mut2_in_read)==2 ~ "both",
+      sum(mut1_in_read, mut2_in_read)==0 ~ "none",
+      mut1_in_read==1 ~ "mut1",
+      mut2_in_read==1 ~ "mut2",
+      TRUE ~ "dev_var"
+    )    
+  }
+  #func_end()
+  return(c(qname=qname, result=final_assignment,
+           origin=unique(parsed_read$origin),
+           baseq1=base_info1$qual,
+           mapq1=base_info1$mapq,
+           baseq2=base_info2$qual,
+           mapq2=base_info2$mapq
+  )
+  )
 }

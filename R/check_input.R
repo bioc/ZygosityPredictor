@@ -97,6 +97,27 @@ assign_correct_colnames <- function(obj, type){
   return(obj)
 }
 #' @keywords internal
+#' description follows
+formula_checks <- function(chr, af, tcn, purity, sex, c_normal, af_normal=0.5){
+  purity <- check_purity(purity)
+  af <- check_af(af)
+  af_normal <- check_af(af_normal)
+  tcn <- check_tcn(tcn)
+  if(is.null(c_normal)){
+    sex <- check_sex(sex)
+    chr <- check_chr(chr)
+    if((sex=="male"&(chr=="X"|chr=="chrX"))|(chr=="Y"|chr=="chrY")){
+      c_normal <- 1
+    } else {
+      c_normal <- 2
+    }
+  } else {
+    c_normal <- check_ploidy(c_normal)
+  }
+  return(list(af=af, tcn=tcn, purity=purity, c_normal=c_normal, 
+              af_normal=af_normal))
+}
+#' @keywords internal
 check_opt_assgap <- function(assumeSomCnaGaps, ploidy){
   if(assumeSomCnaGaps==TRUE&is.null(ploidy)){
     warning("somatic CNA gaps can only be assumed if input ploidy is",
