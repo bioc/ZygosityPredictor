@@ -1,3 +1,101 @@
+#' accesor for gene predictions
+#' 
+gene_ov <- function(fp, inp_gene, n=20){
+  inp_gene <- as.character(rlang::ensym(inp_gene))
+  
+  eval_per_gene <- fp$eval_per_gene %>% filter(gene==inp_gene) 
+  eval_per_var <- fp$eval_per_variant %>% filter(gene==inp_gene) %>%
+    mutate_at(.vars=c("af", "tcn", "wt_cp", "aff_cp"),
+              .funs=round, 2) %>%
+    select(-vn_status, -pre_info, -purity)
+
+  message("Top level: Gene status\n")
+  message(print_tibble(eval_per_gene))
+  message("\n\nSub level: Evaluation per variant\n")
+  message(print_tibble(eval_per_var))
+  
+  if(!is.null(fp$phasing_info)){
+   
+    phasing_info <- fp$phasing_info %>% 
+      filter(gene==inp_gene) %>%
+      mutate_at(.vars=c("conf", "wt_cp", "min_poss_wt_cp", "max_poss_wt_cp"),
+                .funs=round, 2) %>% 
+      arrange(desc(nstatus), desc(conf))
+    detailed <- fp$detailed_phasing_info %>% 
+      filter(gene==inp_gene) %>%
+      select(-conf, -xsq_diff, -xsq_same, -v_same, -v_diff, -phasing) %>%
+      mutate_at(.vars=c("mut2", "mut1", "both", "p_same",    "p_diff"),
+                .funs=round, 2) %>%
+      arrange(desc(nstatus))
+    
+    if(nrow(detailed)<n){
+      n <- nrow(detailed)
+    }
+    if(nrow(phasing_info)>0){
+      message("\n\nSub level: Main phasing combinations\n")
+      message(print_tibble(phasing_info))
+      message("\n\nSub level: All phasing combinations, including SNPs\n", "Showing ", n, " of ", nrow(detailed), " phasing attempts\n")
+      message(print_tibble(detailed[1:n,]))
+    }
+  }
+
+  
+}
+
+ZP_ov <- function(fp){
+  
+  if(!is.null(fp$eval_per_variant)){
+    n_suc_vars <- nrow(fp$eval_per_variant)
+    if(!is.null(fp$uncovered_input)){
+      n_uncovered_vars <- nrow(fp$uncovered_input)
+    } else {
+      n_uncovered_vars <- 0
+    }
+    n_vars <- n_suc_vars+n_uncovered_vars
+    if(!is.null(fp$eval_per_gene)){
+      n_pred_genes <- nrow(fp$eval_per_gene)
+      overview_pred_genes <- fp$eval_per_gene %>%
+        group_by(status, eval_by, .drop=FALSE) %>%
+        tally() %>%
+        print_tibble()
+    } else {
+      n_pred_genes <- 0
+    }
+    if(!is.null(fp$phasing_info)){
+      phased_genes <- fp$phasing_info %>%
+        filter(nstatus>0) %>% pull(gene) %>%
+      
+        unique() %>% sort %>% paste(collapse = ", ")
+    }
+    message("Zygosity Prediction of ", n_vars, " input variants")
+    message(n_uncovered_vars, " are uncovered by sCNA input and were not evaluated")
+    message(n_pred_genes, " genes analyzed:")
+    message(overview_pred_genes)
+    message("phased genes:\n", phased_genes)
+  } else {
+    message("No input variants provided to ZygosityPredictor")
+  }
+  
+}
+
+
+# predicted_genes <- function(fp, filtering="none"){
+#   if(filtering=="none"){
+#     print(fp$eval_per_gene$gene)
+#   } else if(filtering=="phasing"){
+#     phased_genes <- fp$phasing_info
+#     if(is.null(phased_genes)){
+#       message("no genes solved via phasing")
+#     } else {
+#       
+#       message(paste(phased_genes$))
+#     }
+#     print()
+#   }
+#   
+#   
+# }
+
 #' calculates how many copies are affected by a germnline small variant
 #'
 #' @param af Allele-frequency of the variant (numeric value between 0 and 1)
@@ -338,7 +436,8 @@ predict_zygosity <- function(purity,
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
     som_covered <- germ_covered <- final_phasing_info <- 
     combined_snp_phasing <- evaluation_per_gene <- log_list_per_gene <- 
-    detailed_phasing_info <- comb_mat_phased <- comb_mat_info <- NULL
+    detailed_phasing_info <- comb_mat_phased <- comb_mat_info <- 
+    combined_eval_per_gene <- full_phasing_info <- NULL
   ## define global debugging variable
   set_global_variables(debug, verbose, printLog)
   func_start()
@@ -408,16 +507,19 @@ predict_zygosity <- function(purity,
           Reduce(function(x,y)append(x,y),.)
         combined_eval_per_gene <- lapply(full_eval_per_gene, nth, n=1) %>% 
           bind_rows() %>%
-          select(gene, n_mut, status, conf, eval_time_s, info)
+          select(gene, n_mut, status, conf, eval_by, wt_cp, 
+                 warning, wt_cp_range, info,  phasing, eval_time_s)
       } 
     }
     evaluation_per_gene <- bind_incdel_to_final_eval(
       evaluation_per_variant_pre$df_incompletedels,
-      combined_eval_per_gene)
+      combined_eval_per_gene) %>%
+      transform(status=factor(status, 
+                              levels=c("all_copies_affected", "wt_copies_left", "undefined")))
   }
   result_list <- list(
     eval_per_variant=evaluation_per_variant,
-    eval_per_gene=combined_eval_per_gene,
+    eval_per_gene=evaluation_per_gene,
     phasing_info=full_phasing_info,
     uncovered_input=evaluation_per_variant_pre$combined_uncovered,
     log_list_per_gene=log_list_per_gene,

@@ -143,7 +143,7 @@ get_next_path <- function(comb, distCutOff){
       ldc <- 1000
       #while(length(all_paths)==0&ldc<distCutOff){
         
-        print(ldc)
+        #print(ldc)
         open_conns <- which((is.na(mat_phased)|mat_phased>0)&mat_dist<ldc) %>%
           get_xy_index(.,nrow(mat_phased))
        #print(open_conns)
@@ -155,13 +155,13 @@ get_next_path <- function(comb, distCutOff){
           connections <- as_tibble(open_conns)
         }
   if(length(intersect(as.numeric(mains), c(connections$mut_id1, connections$mut_id2)))==2){
-     print(connections)
+     #print(connections)
   
-       print(connections$mut_id1)
-       print(connections$mut_id2)
-       print(mains)
+       #print(connections$mut_id1)
+       #print(connections$mut_id2)
+       #print(mains)
         graph <- graph_from_data_frame(connections, directed = FALSE)
-       print(graph)
+       #print(graph)
         #shortest_path <-
         #nnn_mmc <- names(nn_mmc) %>% str_match("\\d") %>% unlist()
         #print(nnn_mmc)
@@ -254,7 +254,7 @@ prioritize_combination <- function(){
         next_path <- get_next_path(df_unknown[1,]$comb)
         
         if(!is.null(next_path)){
-          print(next_path)
+          #print(next_path)
           next_comb <- get_xy_index(next_path, nrow(mat_phased))
         } else {
           next_comb <- NULL
@@ -272,12 +272,102 @@ prioritize_combination <- function(){
   func_end()
   return(next_comb)
 }
+aggregate_phasing <- function(all_combs, df_gene, phasing_info){
+  func_start()
+  phasing_all_combs <- lapply(all_combs, function(mmp){
+    comb_vec <- paste0("m",sort(get_xy_index(mmp, nrow(mat_phased))))
+    comb <- comb_vec %>% paste(collapse="-")    
+    df_gene_relcomb <- df_gene %>%
+        filter(mut_id %in% comb_vec)
+    min_tcn=min(df_gene_relcomb$tcn)
+    
+    nstatus <- mat_phased[mmp]
+    status <- get_string_status(nstatus)      
+    min_poss_wt_cp=calc_left_wt_copies(min_tcn,
+                                         2,
+                                         df_gene_relcomb$aff_cp[1],
+                                         df_gene_relcomb$aff_cp[2])
+    max_poss_wt_cp=calc_left_wt_copies(min_tcn,
+                                         1,
+                                         df_gene_relcomb$aff_cp[1],
+                                         df_gene_relcomb$aff_cp[2])
+    if(nstatus>0){
+      ## status was defined
+      ## calculate confidence
+      used_combs <- mat_info[mmp] %>% 
+        str_split("-") %>% 
+        unlist() %>%
+        as.numeric()
+      
+      extracted_combs <- phasing_info %>% filter(comb %in% used_combs) 
+      
+      #print(used_combs)
+      conf <- extracted_combs %>%
+        mutate(ep=ifelse(nstatus==2, 1-p_same, 1-p_diff)) %>%
+        pull(ep) %>%
+        prod()
+      
+      unplausible <- paste(as.numeric(extracted_combs$unplausible), collapse="-")
+      subclonal <- paste(as.numeric(extracted_combs$subclonal), collapse="-")
+      #print(11111111111111111111)
+      #print(conf)
+      via <- as.character(mat_info[mmp])
+      phasing=case_when(
+        str_detect(mat_info[mmp], "h") ~ "haploblock",
+        str_detect(mat_info[mmp], "s") ~ "imbalance",
+        str_detect(mat_info[mmp], "-") ~ "indirect",
+        TRUE ~ "direct"
+      )
+      wt_cp <- calc_left_wt_copies(min_tcn,
+                                nstatus,
+                                df_gene_relcomb$aff_cp[1],
+                                df_gene_relcomb$aff_cp[2])
+      score <- case_when(
+        nstatus==2&wt_cp<0.5 ~ 2,
+        TRUE ~ 1)
+
+      
+     # min_poss_wt_cp <- NA
+    #  max_poss_wt_cp <- NA
+    } else {
+      ## status could not be defined
+      ## calculate maximum possible affected copies
+
+      conf <- 0
+      unplausible <- NA
+      subclonal <- NA
+      via <- NA
+      wt_cp <- NA
+      score <- case_when(
+        min_poss_wt_cp>0.5 ~ 1,
+        TRUE ~ 0
+      )
+      phasing <- case_when(
+        score==1 ~ "exclusion",
+        TRUE ~ NA
+      )
+
+      
+    }
+    phasing_status <- tibble(comb=comb, nstatus=nstatus, status=status, 
+                             phasing=phasing, via=via, conf=conf, unplausible=unplausible,
+                             subclonal=subclonal, wt_cp=wt_cp, min_poss_wt_cp=min_poss_wt_cp,
+                             max_poss_wt_cp=max_poss_wt_cp,
+                             score=score)
+    return(phasing_status)
+  }) %>%
+    bind_rows()  %>%
+    select(comb, nstatus, status, phasing, via, conf, unplausible, subclonal, wt_cp, min_poss_wt_cp, max_poss_wt_cp, score)
+  func_end()
+  return(phasing_all_combs)
+}
 #' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom tibble column_to_rownames
 #' @importFrom dplyr as_tibble group_by mutate tibble tally 
 #' @importFrom purrr set_names
-classify_combination <- function(classified_reads, purity, printLog, 
+classify_combination <- function(classified_reads, ref_class1, ref_class2, 
+                                 purity, printLog, 
                                  verbose=FALSE){
   func_start()
   result <- . <- fac <- NULL
@@ -286,10 +376,11 @@ classify_combination <- function(classified_reads, purity, printLog,
                             'skipped')
   ## calculate expected counts according to aff copies for both cases:
   ## same and diff
+  pseudo_count <- 0.0000001
   exp_diff <- tibble(fac=all_possible_results[1:3],
-                     exp=c(0,1,1)+0.0000001)
+                     exp=c(0,1,1)+pseudo_count)
   exp_same <- tibble(fac=all_possible_results[1:3],
-                     exp=c(1,0,0)+0.0000001)
+                     exp=c(1,0,0)+pseudo_count)
   number <- classified_reads %>%
     mutate(fac=factor(result, levels = all_possible_results)) %>%
     group_by(fac, .drop = FALSE) %>%
@@ -297,15 +388,8 @@ classify_combination <- function(classified_reads, purity, printLog,
     column_to_rownames(var='fac') %>%
     t() %>%
     as_tibble()
-  #  both <- number[['both']]
-  # mut1 <- number[['mut1']]
-  #mut2 <- number[['mut2']]
   none_raw <- number[['none']]
   append_loglist(print_tibble(number))
-  # append_loglist("both:", both, 
-  #                "\nmut1:", mut1, 
-  #                "\nmut2:", mut2, 
-  #                "\nnone:", none_raw)
   ## calculate confidence from basecalls and mapping quality of read
   ## and aggregate them per classification result
   cr_conf <- classified_reads %>%
@@ -339,109 +423,66 @@ classify_combination <- function(classified_reads, purity, printLog,
     filter(fac=="mut2") %>%
     pull(prob_sum)
   
-  
-  
   append_loglist(print_tibble(relevant_for_decision))
+  
+  ## predefine null result if no evidence
+  status <- "null"
+  p <- 1
+   xsq_same <- xsq_diff <- p_diff <- p_same <- v_same <- v_diff <- NA
+  nstatus <- evidence <- certainty <- confidence <- conf_log <- 0
+  subclonal <- unplausible <- FALSE
+  
   ## get total number of relevant classifications
   sum_rel <- sum(relevant_for_decision$prob_sum)
   if(sum_rel==0){
-    status <- "null"
-    p <- 1
-    difference_norm_x <- xsq_same <- xsq_diff <- p_diff <- p_same <- or_same <- or_diff <- ratio_norm_x <- NA
-    nstatus <- evidence <- certainty <- confidence <- conf_log <- 0
     append_loglist("no evidence for any classification")
+  } else if(both==0&mut1==0&ref_class2=="snp"){
+    append_loglist("only mut2 detected, which is SNP")
+  } else if(both==0&mut2==0&ref_class1=="snp"){
+    append_loglist("only mut1 detected, which is SNP")
   } else {
     ## check for similarity of numbers in both, mut1 and mut2 by chi-squared
     sim_diff <- chisq.test(t(left_join(exp_diff, relevant_for_decision,
                                        by="fac") %>% 
                                select(exp, prob_sum)))
-    
-    xsq_diff <- sim_diff$statistic[[1]]
-    p_diff <- sim_diff$p.value
-    or_diff <- exp(xsq_diff/sim_diff$parameter[[1]])
-    
-    
     sim_same <- chisq.test(t(left_join(exp_same, relevant_for_decision,
                                        by="fac") %>% 
-                               select(exp, prob_sum))) 
-    
+                               select(exp, prob_sum)))     
+    xsq_diff <- sim_diff$statistic[[1]]
     xsq_same <- sim_same$statistic[[1]]
+    p_diff <- sim_diff$p.value
     p_same <- sim_same$p.value
-    or_same <- exp(xsq_diff/sim_same$parameter[[1]])
+    ## calculate cramers V... as we have always 2x3 table, m=1
+    v_diff <- sqrt(xsq_diff/sum(sum_rel, exp_diff$exp))
+    v_same <- sqrt(xsq_same/sum(sum_rel, exp_same$exp))
     
-    
-    
-    # ss_x=sim_same$statistic[[1]]
-    # sd_x=sim_diff$statistic[[1]]
-    
-    if(xsq_diff<xsq_same){
+    if(p_diff>p_same){
       status <- "diff"
       nstatus <- 2
-      #p <- sim_same$p.value
-      #evid_dec <- evid_diff
-      #evid_alt <- evid_same
     } else {
       status <- "same"
       nstatus <- 1
-      #p <- sim_diff$p.value
-      #evid_dec <- evid_same
-      #evid_alt <- evid_diff
     }  
   }
-    ## extract x-squared and p value from chiquared
-
-    ## normalize x_squared by number of relevant classifications
-    # norm_ss_x <- ss_x/sum_rel
-    # norm_sd_x <- sd_x/sum_rel
-    # difference_norm_x <- abs(norm_ss_x-norm_sd_x)
-    # ratio_norm_x <- norm_sd_x/norm_ss_x    
-    # evid_diff <- case_when(
-    #   #mut1+mut2==0 ~ 0,
-    #   mut1==0|mut2==0 ~ 0.01,
-    #   TRUE ~ mut1+mut2
-    # )
-    # evid_same <- case_when(
-    #   both==0 ~ 0.01,
-    #   TRUE ~2*both
-    # )
-
-  #   append_loglist("chisq against expected-diff_result: x_sqrd:", 
-  #                  sd_x, "; p", sim_diff$p.value)
-  #   append_loglist("chisq against expected-same_result: x_sqrd:", 
-  #                  ss_x, "; p", sim_same$p.value)
-  #   evidence <- case_when(
-  #     evid_dec >= 20 ~ 3, #"high",
-  #     evid_dec >= 3  ~ 2, #"medium"
-  #     evid_dec > 1  ~ 1, #"low" 
-  #     nstatus==1 ~ 1,
-  #     TRUE ~ 0#"verylow"
-  #   )
-  #   cert_estimator <- evid_dec/evid_alt
-  #   certainty <- case_when(
-  #     cert_estimator >= 10 ~ 3,
-  #     cert_estimator >= 5 ~ 2,
-  #     cert_estimator >= 1 ~ 1,
-  #     TRUE ~ 0
-  #   )  
-  #   conf_log <- log10((evid_dec^2)/(evid_alt*p))
-  #   confidence <- case_when(
-  #     conf_log<1 ~ 1,
-  #     conf_log<3 ~ 2,
-  #     conf_log<5 ~ 3,
-  #     conf_log<10 ~ 4,
-  #     TRUE ~ 5
-  #   )
-  # }
-  # append_loglist("final status:", status)
-  # append_loglist("evidence:", evidence)
-  # append_loglist("certainty:", certainty)
-  # append_loglist("confidence:", confidence)
+  ## check if evidence for subclonal sample is given  
+  if(both>0&((mut1==0&mut2>0)|(mut1>0&mut2==0))){
+    if(!"snp" %in% c(ref_class1, ref_class2)){
+      warning("evidence fur subclonality found during phasing!")
+      subclonal <- TRUE      
+    }
+  }
+  ## check for unplausible case
+  if(both>0&mut1>0&mut2>0){
+    warning("unplausible phasing result!")
+    unplausible <- TRUE
+  }
+  
   status_table <- tibble(
     both=both,
     mut1=mut1,  
     mut2=mut2,
     dev_var=number[['dev_var']],
-    no_overlap=sum(as.numeric(number[['read_in_read']]), 
+    skipped=sum(as.numeric(number[['read_in_read']]), 
                    as.numeric(number[['skipped']])),
     status=status,
     nstatus=nstatus,
@@ -449,41 +490,139 @@ classify_combination <- function(classified_reads, purity, printLog,
     xsq_diff=xsq_diff,
     p_same=p_same,
     p_diff=p_diff,
-    or_same=or_same,
-    or_diff=or_diff,
-    #p=p,
-    #evid=evidence,
-    #cert=certainty,
-    #conf_log=conf_log,
-    #conf=confidence,
-    #diffnx=difference_norm_x,
-    #ratnx=ratio_norm_x,
+    v_same=v_same,
+    v_diff=v_diff,
     none_raw=none_raw,
     DNA_rds=nrow(classified_reads %>% filter(origin=="DNA")),
-    RNA_rds=nrow(classified_reads %>% filter(origin=="RNA"))
+    RNA_rds=nrow(classified_reads %>% filter(origin=="RNA")),
+    subclonal=subclonal,
+    unplausible=unplausible
   )
   func_end(verbose)
   return(status_table)
 }  
+#' @keywords internal
+#' @importFrom stringr %>%
+#' @importFrom dplyr tibble 
+classify_reads <- function(ref_pos1,
+                           ref_pos2,
+                           ref_chr1,
+                           ref_chr2,
+                           ref_alt1,
+                           ref_alt2,
+                           ref_ref1,
+                           ref_ref2,
+                           ref_class1,
+                           ref_class2, bamDna, bamRna, verbose){
+  vm(as.character(sys.call()[1]), verbose, 1)
+  #dist <- abs(as.numeric(line[['pos1']])-as.numeric(line[['pos2']]))
+  
+  # ref_pos1 <- as.numeric(mat_gene_relcomb[,"pos"][[2]])  
+  # ref_pos2 <- as.numeric(mat_gene_relcomb[,"pos"][[1]])
+  # 
+  # ref_chr1 <- as.numeric(mat_gene_relcomb[,"chr"][[2]])  
+  # ref_chr2 <- as.numeric(mat_gene_relcomb[,"chr"][[1]])
+  # 
+  # ref_alt1 <- as.character(mat_gene_relcomb[,"alt"][[2]])
+  # ref_alt2 <- as.character(mat_gene_relcomb[,"alt"][[1]]) 
+  # 
+  # ref_ref1 <- as.character(mat_gene_relcomb[,"ref"][[2]])
+  # ref_ref2 <- as.character(mat_gene_relcomb[,"ref"][[1]])
+  # 
+  # ref_class1 <- as.character(mat_gene_relcomb[,"class"][[2]])
+  # ref_class2 <- as.character(mat_gene_relcomb[,"class"][[1]])
+  #vm(line, verbose)
+  #print(ref_class1)
+  #print(ref_class2)
+  bam <- check_for_overlapping_reads(bamDna,
+                                     bamRna,
+                                     ref_chr1,
+                                     ref_chr2,
+                                     ref_pos1,
+                                     ref_pos2, 
+                                     verbose)
+  ##prind(1bam)
+  ##prind(1ref_ref1)
+  ##prind(1ref_ref2)
+  if(!length(bam)==0){  
+    #vm("reads detected, applying core function", verbose, 1)
+    classified_reads <- lapply(unique(bam$qname),
+                               core_tool,
+                               bam, 
+                               ref_pos1,
+                               ref_pos2,
+                               ref_alt1,
+                               ref_alt2,
+                               ref_ref1,
+                               ref_ref2,
+                               ref_class1,
+                               ref_class2,
+                               verbose) %>%
+      bind_rows() #%>%
+    #  rowwise() %>%
+    #  mutate(baseq1_conv=ascii_to_dec(baseq1),
+    #         baseq2_conv=ascii_to_dec(baseq2))
+    
+    #vm("reads classified", verbose, 1)
+    
+  } else {
+    #vm("no reads detected, return empty df", verbose, 1)
+    classified_reads <- tibble()
+  } 
+  func_end(verbose)
+  return(classified_reads)
+}
 phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna, verbose, geneDir, 
-                              phasingDir, phasing_type, showReadDetail){
+                              phasing_type, showReadDetail){
+  func_start()
+  #print(mat_gene_relcomb)
   append_loglist("Phasing:", comb)
-  classified_main_comb <- tibble(comb=comb,
-                                 status="null",
-                                 nstatus=0,
-                                 conf=0,
+  ## predefine empty output
+  classified_main_comb <- tibble(comb=comb, status="null", nstatus=0, conf=0,
                                  phasing=comb)
-  main_classified_reads <- classify_reads(mat_gene_relcomb, bamDna, bamRna, verbose)
+  ## define relevant properties for mut1 and mut2 globally for the phasing process
+  mut1 <- 2
+  mut2 <- 1
+  
+  ref_pos1 <- as.numeric(mat_gene_relcomb[,"pos"][[mut1]])  
+  ref_pos2 <- as.numeric(mat_gene_relcomb[,"pos"][[mut2]])
+  
+  ## must be character to work for annotations like: chrX
+  ref_chr1 <- as.character(mat_gene_relcomb[,"chr"][[mut1]])  
+  ref_chr2 <- as.character(mat_gene_relcomb[,"chr"][[mut2]])
+  
+  
+  
+  ref_alt1 <- as.character(mat_gene_relcomb[,"alt"][[mut1]])
+  ref_alt2 <- as.character(mat_gene_relcomb[,"alt"][[mut2]]) 
+  
+  ref_ref1 <- as.character(mat_gene_relcomb[,"ref"][[mut1]])
+  ref_ref2 <- as.character(mat_gene_relcomb[,"ref"][[mut2]])
+  
+  ref_class1 <- as.character(mat_gene_relcomb[,"class"][[mut1]])
+  ref_class2 <- as.character(mat_gene_relcomb[,"class"][[mut2]])
+  
+  main_classified_reads <- classify_reads(ref_pos1,
+                                          ref_pos2,
+                                          ref_chr1,
+                                          ref_chr2,
+                                          ref_alt1,
+                                          ref_alt2,
+                                          ref_ref1,
+                                          ref_ref2,
+                                          ref_class1,
+                                          ref_class2, 
+                                          bamDna, bamRna, verbose)
   append_loglist(nrow(main_classified_reads), 
                  "reads / read-pairs covering both positions")
   if(nrow(main_classified_reads)!=0){
-    #return_null_result <- FALSE
     if(showReadDetail==TRUE){
       store_log(geneDir, main_classified_reads %>%
-                  mutate(comb=comb), 
+                  mutate(comb=comb),
                 paste0("classified_reads_", comb,".tsv"))
-    } 
+    }
     classified_main_comb <- classify_combination(main_classified_reads,
+                                                 ref_class1, ref_class2,
                                                  purity,
                                                  printLog,
                                                  verbose
@@ -495,12 +634,9 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna, verbose, g
         comb=comb,
         phasing=comb
       ) 
-    
-    # store_log(phasingDir, classified_main_comb %>% mutate(gene=basename(geneDir)), 
-    #           paste0("classified_combination_", 
-    #                  comb, ".tsv"))
   }   
   append_matrices(classified_main_comb)
+  func_end()
   return(classified_main_comb)
 }
 append_matrices <- function(classified_main_comb, iterate=TRUE){
@@ -642,12 +778,12 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
 perform_direct_phasing <- function(mat_gene, bamDna, bamRna, purity, 
                                    verbose, printLog, showReadDetail, geneDir){
   func_start()
-  phasingDir <- NULL
+  #phasingDir <- NULL
   phasing_type <- "direct"
-  if(!is.null(geneDir)){
-    phasingDir <- file.path(geneDir, phasing_type)
-    dir.create(phasingDir)
-  }
+  # if(!is.null(geneDir)){
+  #   phasingDir <- file.path(geneDir, phasing_type)
+  #   dir.create(phasingDir)
+  # }
  #print(mat_phased)
  #print(mat_info)
   phasing_info <- tibble()
@@ -659,7 +795,7 @@ perform_direct_phasing <- function(mat_gene, bamDna, bamRna, purity,
     mat_gene_relcomb <- mat_gene[relcombxy,]
     comb <- unphased[1]
     classified_main_comb <- phase_combination(mat_gene_relcomb, comb, bamDna, bamRna, 
-                                              verbose, geneDir, phasingDir, phasing_type, showReadDetail)
+                                              verbose, geneDir, phasing_type, showReadDetail)
    #print(mat_phased)
    #print(mat_info)
     phasing_info <- bind_rows(phasing_info,
@@ -684,9 +820,12 @@ phase <- function(df_gene, bamDna, bamRna,
                   phasingMode){
   vm(as.character(sys.call()[1]), verbose, 1)
   #haploblock_phasing <- NULL
+  GENE <- unique(df_gene$gene)
   if(!is.null(logDir)){
-    geneDir <- file.path(logDir, unique(df_gene$gene))
+    geneDir <- file.path(logDir, GENE)
     dir.create(geneDir)
+  } else {
+    geneDir <- NULL
   }
   ##prind(1df_gene)
   ## (1): define all combinations of variants to be phased
@@ -707,11 +846,13 @@ phase <- function(df_gene, bamDna, bamRna,
                                            purity, verbose, printLog, 
                                            showReadDetail, geneDir)
   phasing_info <- direct_phasing$info
+  #print(phasedVcf)
   if(length(unknown_main())>0&!is.null(phasedVcf)){
     append_loglist("unphased combinations left --> Initialize SNP phasing")
     ## missing combinations in main muts --> start secondary phasing approaches
     lsnps <- load_snps(df_gene, phasedVcf, haploBlocks, refGen, distCutOff, verbose, somCna, snpQualityCutOff)
     store_log(geneDir, lsnps, "lsnps.tsv")
+    #print(lsnps)
     if(!is.null(lsnps)){
       snps <- lsnps %>%
         ## filter low quality
@@ -761,8 +902,8 @@ phase <- function(df_gene, bamDna, bamRna,
       to_phase <- prioritize_combination()
       i <- 1
       while(!is.null(to_phase)&length(unknown_main())>0){
-        print(to_phase)
-        print(unknown_main())
+        #print(to_phase)
+        #print(unknown_main())
         append_loglist("Phasing combination:", paste(paste0(to_phase), collapse="-"))
 
         mat_gene_relcomb <- df[to_phase,] %>% as.matrix()
@@ -771,7 +912,7 @@ phase <- function(df_gene, bamDna, bamRna,
                                  nrow(mat_phased))
 
         classified_main_comb <- phase_combination(mat_gene_relcomb, comb,
-                                                  bamDna, bamRna, verbose, geneDir,
+                                                  bamDna, bamRna, verbose, 
                                                   geneDir, comb, showReadDetail)
         #print(classified_main_comb)
         phasing_info <- bind_rows(phasing_info,
@@ -798,61 +939,35 @@ phase <- function(df_gene, bamDna, bamRna,
   uppertri <- which(upper.tri(mat_phased))
   #solved <- main_pos[which(mat_phased[main_pos]>0)]
   all_combs <- intersect(main_pos, uppertri)
-  phasing_all_combs <- lapply(all_combs, function(mmp){
-    comb_vec <- paste0("m",sort(get_xy_index(mmp, nrow(mat_phased)))) #%>%
-    comb <- comb_vec %>% paste(collapse="-")
-    if(mat_phased[mmp]>0){
-      phasing_status <- tibble(comb=comb,
-                               nstatus=mat_phased[mmp],
-                               conf=1,
-                               via=as.character(mat_info[mmp]),
-                               phasing=case_when(
-                                 str_detect(mat_info[mmp], "h") ~ "haploblock",
-                                 str_detect(mat_info[mmp], "s") ~ "imbalance",
-                                 str_detect(mat_info[mmp], "-") ~ "indirect",
-                                 TRUE ~ "direct"
-                               ))
-    } else {
-      phasing_status <- tibble(
-        comb=comb,
-        nstatus=0,
-        conf=0,
-        via=NA,
-        phasing=NA
-      )
-    }
-    return(phasing_status %>% mutate(m1=comb_vec[1], m2=comb_vec[2]))
-  }) %>%
-    bind_rows()  %>%
-    left_join(df_gene %>% select(mut_id, tcn1=tcn, aff_cp1=aff_cp),
-              by=c("m1"="mut_id")) %>%
-    left_join(df_gene %>% select(mut_id, tcn2=tcn, aff_cp2=aff_cp),
-              by=c("m2"="mut_id")) %>%
+  phasing_all_combs <- aggregate_phasing(all_combs, df_gene, phasing_info)
+ if(nrow(phasing_info)==0){
+   phasing_info_export <- tibble()
+ } else {
+    phasing_info_export <- phasing_info %>%
+      rowwise() %>%
+      mutate(ncomb=comb,
+             gene=GENE,
+             comb=paste(
+               sort(
+                 factor(
+                  c(colnames(mat_phased)[get_xy_index(ncomb, nrow(mat_phased))["x"]], 
+                     rownames(mat_phased)[get_xy_index(ncomb, nrow(mat_phased))["y"]]),
+                  levels=c(paste0("m", seq(1,100,1)),
+                           paste0("s", seq(1,2000,1)))
+                 )
+               ),
+               collapse="-"
+               ))   
+ }
 
-    mutate(
-      tcn=min(tcn1, tcn2),
-      wt_cp=calc_left_wt_copies(tcn,
-                                nstatus,
-                                aff_cp1,
-                                aff_cp2),
-      score=case_when(
-        nstatus==2&wt_cp<0.5 ~ 2,
-        nstatus==0 ~ 0,
-        TRUE ~ 1),
-      status=get_string_status(nstatus)
-    ) %>%
-    select(comb, nstatus, status, phasing, via, conf, wt_cp, score)
-  ##print(df)
-  # store_log(geneDir, df, "df_snps_muts.tsv")
-  ##print(phasing_info)
-  # store_log(geneDir, phasing_info, "all_indirect_phasing_combinations.tsv")
-  #print(as_tibble(mat_phased))
+  
   store_log(geneDir, as_tibble(mat_phased), "mat_phased.tsv")
   #print(3)
   #print(as_tibble(mat_info))
   store_log(geneDir, as_tibble(mat_info), "mat_info.tsv")
   #print(4)
   store_log(geneDir, phasing_info, "all_phasing_combinations.tsv")
-  return(list(phasing_all_combs, phasing_info, mat_phased, mat_info))
+  func_end()
+  return(list(phasing_all_combs, phasing_info_export, mat_phased, mat_info))
   
 }

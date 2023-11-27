@@ -97,11 +97,15 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
   #print(pos1)
   #print(pos2)
   if(pos1>pos2){
+    #stop("avoid changing position order")
+    ## exchange does not matter here
     ref_pos1 <- as.numeric(pos2)
     ref_pos2 <- as.numeric(pos1)
     ref_chr1 <- as.character(chr2)
     ref_chr2 <- as.character(chr1)
   }
+ #print(ref_chr1)
+ #print(ref_chr2)
   ref_gr1 <- GRanges(seqnames = ref_chr1, 
                                    ranges = ref_pos1)
   ref_gr2 <- GRanges(seqnames = ref_chr2, 
@@ -1220,6 +1224,8 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
                                         verbose=FALSE){
   #vm("checking DNA", verbose, 1)
   func_start()
+  #print(ref_chr1)
+  #print(ref_chr2)
   dna_bam <- prepare_raw_bam_file(bamDna, 
                                   ref_chr1, 
                                   ref_chr2, 
@@ -1262,67 +1268,7 @@ ascii_to_dec <- function(ascii_encoded){
 
 }
 
-#' @keywords internal
-#' @importFrom stringr %>%
-#' @importFrom dplyr tibble 
-classify_reads <- function(mat_gene_relcomb, bamDna, bamRna, verbose){
-  vm(as.character(sys.call()[1]), verbose, 1)
-  #dist <- abs(as.numeric(line[['pos1']])-as.numeric(line[['pos2']]))
-  
-  ref_pos1 <- as.numeric(mat_gene_relcomb[,"pos"][[2]])  
-  ref_pos2 <- as.numeric(mat_gene_relcomb[,"pos"][[1]])
-  ref_chr1 <- as.numeric(mat_gene_relcomb[,"chr"][[2]])  
-  ref_chr2 <- as.numeric(mat_gene_relcomb[,"chr"][[1]])
-  
-  ref_alt1 <- as.character(mat_gene_relcomb[,"alt"][[2]])
-  ref_alt2 <- as.character(mat_gene_relcomb[,"alt"][[1]]) 
-  
-  ref_ref1 <- as.character(mat_gene_relcomb[,"ref"][[2]])
-  ref_ref2 <- as.character(mat_gene_relcomb[,"ref"][[1]])
-  
-  ref_class1 <- as.character(mat_gene_relcomb[,"class"][[2]])
-  ref_class2 <- as.character(mat_gene_relcomb[,"class"][[1]])
-  #vm(line, verbose)
-  #print(ref_class1)
-  #print(ref_class2)
-  bam <- check_for_overlapping_reads(bamDna,
-                                     bamRna,
-                                     ref_chr1,
-                                     ref_chr2,
-                                     ref_pos1,
-                                     ref_pos2, 
-                                     verbose)
-  ##prind(1bam)
-  ##prind(1ref_ref1)
-  ##prind(1ref_ref2)
-  if(!length(bam)==0){  
-    #vm("reads detected, applying core function", verbose, 1)
-    classified_reads <- lapply(unique(bam$qname),
-                               core_tool,
-                               bam, 
-                               ref_pos1,
-                               ref_pos2,
-                               ref_alt1,
-                               ref_alt2,
-                               ref_ref1,
-                               ref_ref2,
-                               ref_class1,
-                               ref_class2,
-                               verbose) %>%
-      bind_rows() #%>%
-    #  rowwise() %>%
-    #  mutate(baseq1_conv=ascii_to_dec(baseq1),
-    #         baseq2_conv=ascii_to_dec(baseq2))
-    
-    #vm("reads classified", verbose, 1)
-    
-  } else {
-    #vm("no reads detected, return empty df", verbose, 1)
-    classified_reads <- tibble()
-  } 
-  func_end(verbose)
-  return(classified_reads)
-}
+
 #' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom dplyr mutate as_tibble
@@ -1425,15 +1371,36 @@ combine_main_muts_and_snps <- function(df_gene_filtered, snps){
   return(sub_comb)
 }
 
+make_both_annotations <- function(region_to_load_in){
+  sec <- region_to_load_in %>%
+    as_tibble()
+  
+  if(str_detect(sec$seqnames[1],"chr")){
+    prim <- sec %>%
+      mutate(seqnames=str_replace_all(seqnames, "chr", "")) %>%
+      GRanges()
+  } else {
+    prim <- sec %>%
+      mutate(seqnames=paste0("chr",seqnames)) %>%
+      GRanges()
+  }
+  
+  fin <- c(region_to_load_in, prim)
+  return(fin)
+  
+}
 
 
-
-loadVcf <- function(vcf_in, chrom, region_to_load, refGen, verbose, somCna,which="all",
+loadVcf <- function(vcf_in, chrom, region_to_load_in, refGen, verbose, somCna,which="all",
                     colname_gt="GT", colname_af="AF", colname_dp4="DP4", 
                     dkfz=FALSE){
   func_start(verbose)
   ## first check which format input vcf has
   #print(region_to_load)
+  region_to_load <- make_both_annotations(region_to_load_in)
+  chr_anno <- as_tibble(region_to_load_in) %>%
+    pull(seqnames) %>% .[1] %>% str_detect("chr")
+ #print(region_to_load)
   gr_list <- lapply(vcf_in, function(VCF){
     #vm(class(VCF), verbose)
     if(is(VCF, "TabixFile")){
@@ -1467,7 +1434,7 @@ loadVcf <- function(vcf_in, chrom, region_to_load, refGen, verbose, somCna,which
         vcf_info <- "vcf does not cover chromosome"
       }
     } else {
-      if(str_detect(VCF, paste0("chr", chrom, "[^0-9]"))){
+      if(str_detect(VCF, paste0("chr", unlist(str_replace(chrom, "chr", "")), "[^0-9]"))){
         ##prind(1"noTabix_det")
         ##prind("file detected")
         loadedVcf <- VariantAnnotation::readVcf(VCF, refGen)
@@ -1477,15 +1444,24 @@ loadVcf <- function(vcf_in, chrom, region_to_load, refGen, verbose, somCna,which
         af <- VariantAnnotation::info(loadedVcf)[[colname_af]] 
         dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]]
         rangesVcf <- rowRanges(loadedVcf) 
+       #print(rangesVcf)
         rangesVcf$gt <- gt
         rangesVcf$af <- af
         rangesVcf$dp4 <- dp4
-        combVcf <-  subsetByOverlaps(rangesVcf, region_to_load)#)%>%
+        combVcf <-  subsetByOverlaps(rangesVcf, region_to_load) 
           
           #mergeByOverlaps(somCna) %>% as_tibble()
         if(length(combVcf)>0){
           combVcf$ALT <- unlist(lapply(combVcf$ALT, 
                                        function(x){as.character(x[[1]][1])}))
+          combVcf <- as_tibble(combVcf) %>%
+            mutate(seqnames=case_when(
+              chr_anno==TRUE&!str_detect(seqnames, "chr") ~ paste0("chr",seqnames),
+              chr_anno==FALSE&str_detect(seqnames, "chr") ~ str_replace_all(seqnames, "chr", ""),
+              TRUE ~ seqnames
+              
+            )) %>%
+            GRanges()
           vcf_info <- "variants_detected"
         } else {
           combVcf <- NULL
@@ -1629,52 +1605,6 @@ select_status <- function(status_direct, status_haploblock){
 print_tibble <- function(tbl_in){
   res <- paste(as.character(knitr::kable(tbl_in)), collapse="\n")
   return(res)
-}
-aggregate_phasing <- function(in_list, all_combinations, geneDir, verbose){
-  func_start(verbose)
-  phasing_types <- factor(c("direct","indirect", "haploblock", "imbalance"))
-  corr_factors <- tibble(phasing=phasing_types,
-                         factor=c(1,1,1,0.5))
-  all_phasing_types <- lapply(in_list, nth, 1) %>% bind_rows() %>%
-    left_join(corr_factors, by="phasing") %>%
-    mutate(conf_type=conf*factor)
-  append_loglist(print_tibble(all_phasing_types %>% 
-                                mutate(gene=basename(geneDir))))
-  store_log(geneDir, all_phasing_types %>% 
-              mutate(gene=basename(geneDir)), "full_phasing_status.tsv")
-  per_comb <- lapply(unique(all_phasing_types$comb), function(COMB){
-    rel_comb <- all_phasing_types %>%
-      filter(comb==COMB) 
-    if(1 %in% rel_comb$nstatus&2 %in% rel_comb$nstatus){
-      warning("different phasing approaches assigned different states")
-      final_result <- rel_comb %>%
-        arrange(desc(conf_type), phasing) %>%
-        .[1,]
-    } else {
-      final_result <- rel_comb %>%
-        arrange(desc(nstatus), desc(conf_type), phasing)%>%
-        .[1,]
-    }
-    return(final_result)
-  }) %>%
-    bind_rows() %>%
-    left_join(all_combinations, by=c("comb"="comb_id_sorted")) %>%
-    rowwise() %>%
-    mutate(
-    tcn=min(tcn1, tcn2),
-    wt_cp=calc_left_wt_copies(tcn,
-                              nstatus,
-                              aff_cp1,
-                              aff_cp2),
-    score=case_when(
-      nstatus==2&wt_cp<0.5 ~ 2,
-      nstatus==0 ~ 0,
-      TRUE ~ 1),
-    ) %>% 
-    select(1:3, phasing, conf=conf_type, wt_cp, score)
-  
-  func_end(verbose)
-  return(per_comb)
 }
 split_genomic_range <- function(gr, exclude_positions) {
   # Sort the exclude_positions and ensure they are unique
@@ -2108,68 +2038,245 @@ make_dist_matrix <- function(v, all_variants, distCutOff){
 #   }) %>% unlist() %>%
 #     return()
 # }
+
+get_general_info <- function(most_relevant_comb, all_comb, df_gene){
+  func_start()
+  if(str_count(paste(all_comb$status, collapse=' '),
+               'diff')==nrow(all_comb)&
+     nrow(all_comb)>=mean(as.numeric(df_gene$tcn))){ 
+    
+    info <- paste(
+      'unclear: all affected is very likely because all',nrow(all_comb),
+      'mutations are at different copies and tcn=', 
+      mean(as.numeric(df_gene$tcn)),
+      'tumor might be subclonal and therefore wt-copies left')
+#  } else if(nrow(all_comb)>3){
+    # info <-      paste('unclear: very high number of mutations...', 
+    #                    'probably wt copies left but please check variant table')
+  } else {
+    # info <- paste0(most_relevant_comb$phasing, "-phasing of ", most_relevant_comb$comb, ": ", most_relevant_comb$status, 
+    #                "; left wt cp: ", round(most_relevant_comb$wt_cp, 2)) 
+    info <- NA
+  }
+  func_end()
+  return(info)
+}
+
+get_unphased_info <- function(most_relevant_comb, all_comb){
+  func_start()
+  all_comb_unphased <- all_comb[which(all_comb$nstatus==0),]
+  n_unphased <- nrow(all_comb_unphased)
+  if(n_unphased>0){
+    unphased <- TRUE
+    unphased_info_pre <- paste(n_unphased, "of", 
+                        nrow(all_comb), "unphased combinations:")
+    if(most_relevant_comb$score==2){
+      ## unphased ones do not matter
+      unphased_info <- paste(unphased_info_pre, "But one affects all copies")  
+    } else {
+      unphased_info <- paste(unphased_info_pre, "Combs", 
+                        paste(all_comb_unphased$comb, collapse = ", "), 
+                        "might affect all copies") 
+    }
+  } else {
+    unphased_info <- "all combinations solved"
+    unphased <- FALSE
+  }
+  func_end()
+  return(tibble(info=unphased_info, unphased=unphased))
+}
+
+eval_rare_case <- function(all_comb){
+  diff_combs <- all_comb[which(all_comb$nstatus==2),]
+  if(nrow(diff_combs)>2){
+    ## more than 2 combinatiosna re diff
+    ## check for all posiible master combinations
+    mut_occurence <- unlist(str_split(diff_combs$comb, "-")) %>% table() %>%
+      .[which(.>=2)]
+    if(length(mut_occurence)>=3){
+      rare_case <- " rare_case_detected"
+    } else {
+      rare_case <- ""
+    }
+  } else {
+    rare_case <- ""
+  }
+  return(rare_case)
+}
+
 eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
   func_start()
-  req_output_cols <- c("gene", "n_mut", "score", "conf",  "info")
-  if(nrow(all_comb)==1){
-    ## only one combination
-    gene_phasing <- all_comb %>%
-      mutate(info=paste0(phasing, "-phasing of ", comb, ": ", status, 
-                         "; left wt cp: ", round(wt_cp, 2)))
+#  req_output_cols <- c("gene", "n_mut", "score", "conf",  
+ #                      "general_info")
+  
+  rare_case <- ""
+  most_relevant_comb <- all_comb %>%
+    arrange(desc(score), wt_cp, desc(conf)) %>%
+    .[1,]  
+  
+  if(most_relevant_comb$score==2){
+    ## take most relevant combination
+    gene_clear <- TRUE
+    wt_cp_clear <- TRUE
+    case <- "allaff"
+    conf <- most_relevant_comb$conf
+    conf_case <- "mostrel"
+    eval <- most_relevant_comb$phasing
   } else {
-    
-    ## check if combinationa re missing and try to fill them
-    
-    if(max(all_comb$score)==2){  
-      ## at least two combinations one of whcih affects all copies
-      gene_phasing <- all_comb %>% 
-        filter(wt_cp==min(all_comb$wt_cp)) %>%
-        .[1,] %>%
-        mutate(info=paste0(phasing, "-phasing of ", comb, ": ", status, 
-                           "; left wt cp: ", round(wt_cp, 2))) 
-      
-      
-    } else if(str_count(paste(all_comb$status, collapse=' '),
-                        'diff')==nrow(all_comb)&
-              nrow(all_comb)>=mean(as.numeric(df_gene$tcn))){ 
-      
-      gene_phasing <- all_comb %>% 
-        filter(wt_cp==min(all_comb$wt_cp)) %>%
-        .[1,]%>% 
-        mutate(
-          info=paste(
-          'unclear: all affected is very likely because all',nrow(all_comb),
-          'mutations are at different copies and tcn=', 
-          mean(as.numeric(df_gene$tcn)),
-          'tumor might be subclonal and therefore wt-copies left'))
-      
-      
-      
-    } else if(nrow(all_comb)>3){
-      
-      gene_phasing <- all_comb %>% 
-        filter(wt_cp==min(all_comb$wt_cp)) %>%
-        .[1,] %>%
-        mutate(info=      paste('unclear: very high number of mutations...', 
-              'probably wt copies left but please check variant table'))
-      
+    if(nrow(all_comb)==1){
+      ## take the only combination
+      eval <- most_relevant_comb$phasing
+      if(most_relevant_comb$score==0){
+        gene_clear <- FALSE
+        wt_cp_clear <- FALSE
+        case <- "onecomb_unphased"
+        conf <- 0
+        conf_case <- "poss_allaff_unphased"
+      } else {
+        gene_clear <- TRUE
+        if(min(most_relevant_comb$min_poss_wt_cp, na.rm=TRUE)<0.5){
+          conf <- most_relevant_comb$conf
+          conf_case <- "poss_allaff_but_same"
+        } else {
+          conf <- 1
+          conf_case <- "impos_allaff"
+        }
+        if(is.na(most_relevant_comb$wt_cp)){
+          wt_cp_clear <- FALSE
+          case <- "onecomb_wtNA"
+        } else {
+          wt_cp_clear <- TRUE
+          case <- "onecomb_wtclear"
+        }
+      }
     } else {
-      gene_phasing <- all_comb %>% 
-        filter(wt_cp==min(all_comb$wt_cp)) %>%
-        .[1,] %>%
-        mutate(info="test")
-    }
-    
-    
-    
+      rare_case <- eval_rare_case(all_comb)
+      ## evaluate all combinatioons
+      if(0 %in% all_comb$score){
+        ## potentially reachable all copies affectd by unphased combinations
+        gene_clear <- FALSE
+        wt_cp_clear <- FALSE
+        case <- "morecomb_unphased"
+        conf <- 0
+        conf_case <- "poss_allaff_unphased"
+        eval <- NA
+      } else {
+        ## each combination could be solved
+        
+        gene_clear <- TRUE
+        if(any(!is.na(all_comb$wt_cp))){
+          if(sum(!is.na(all_comb$wt_cp))==nrow(all_comb)){
+            wt_cp_clear <- TRUE
+            case <- "morecomb_allsolved"
+          } else {
+            if(min(all_comb$wt_cp, na.rm=TRUE)<=min(all_comb$min_poss_wt_cp, na.rm=TRUE)){
+              ## if potential min wt copies are higher than clear ones
+              wt_cp_clear <- TRUE
+              case <- "morecomb_wtclear"
+            } else {
+              wt_cp_clear <- FALSE
+              case <- "morecomb_wtNA"
+            }            
+          }
+
+        } else {
+          ## no wt copies annoatted 
+          wt_cp_clear <- FALSE
+          case <- "morecomb_onlyexc"
+        }          
+        
+        if(min(all_comb$min_poss_wt_cp, na.rm=TRUE)<0.5){
+            ## if this is the case, a possible diff would lead to all copies affected but it was phased as same
+            ## for confidence measurement, we here need to take the phasing confidence which indicates this
+            conf <- all_comb %>%
+              mutate(p_comb=case_when(
+                min_poss_wt_cp<0.5 ~ conf,
+                TRUE ~ 1
+              )) %>%
+              pull(p_comb) %>%
+              prod()
+            rare_case <- " confidence adjusted"
+            conf_case <- "morecomb_poss_allaff_but_same"
+            
+            all_phasing_annotations <- all_comb[which(!is.na(all_comb$phasing)),]
+            if(nrow(all_phasing_annotations)>0){
+              merged <- paste(all_phasing_annotations$phasing, collapse = ", ")
+              eval <- case_when(
+                str_detect(merged, "imbalance") ~ "imbalance",
+                str_detect(merged, "haploblock") ~ "haploblock",
+                str_detect(merged, "indirect") ~ "indirect",
+                TRUE ~ "direct"
+              )
+            } else {
+              eval <- "aff_cp"
+            }
+        } else {
+            conf <- 1
+            conf_case <- "morecomb_imposs_allaff"
+            eval <- "aff_cp"
+        }
+      } ## each combination was solved
+    } ## more than one comb
+  } ## max score = 1
+  
+  if(gene_clear){
+    gene_result <- most_relevant_comb %>%
+      mutate(info=paste("most relevant phasing combination:",comb)) %>%
+      select(gene, score, phasing, wt_cp) 
+  } else {
+    gene_result <- most_relevant_comb %>%
+      select(gene) %>%
+      mutate(info="unsolvable phasing combination", phasing=NA, score=0, wt_cp=NA)
   }
-    
-    
+  wt_cp_range <- paste(round(min(all_comb$min_poss_wt_cp, na.rm=TRUE),2), "-",
+        round(max(all_comb$max_poss_wt_cp, na.rm=TRUE),2))
+  if(wt_cp_clear){
+    wt_cp_result <- gene_result 
+  } else {
+
+    wt_cp_result <- gene_result %>%
+      select(-wt_cp) %>%
+      mutate(wt_cp=NA)
+  }
+  unplaus <- all_comb[which(!is.na(all_comb$unplausible)),]
+  if(nrow(unplaus)>0){
+  #if(any(!is.na(all_comb$unplausible))){
+    if(any(str_detect(unplaus$unplausible, "1"))){
       
+      issues <- unplaus %>%
+        filter(str_detect(unplausible, "1")) %>%
+        pull(comb) %>%
+        paste(collapse = ", ") %>%
+        paste("unplausible phasing combs:",.)
+    } else {
+      issues <- NA
+    }    
+  } else {
+    issues <- NA
+  }
+
+  
+  
+  annotated_result <- wt_cp_result %>%
+    mutate(conf=conf, 
+           gene_clear=gene_clear, wt_cp_clear=wt_cp_clear, 
+           case=paste0(case, rare_case), n_mut=nrow(df_gene),
+           conf_case=conf_case,
+           wt_cp_range=wt_cp_range,
+           warning=issues,
+           eval_by=eval
+           # eval_by=case_when(
+           #   score==0 ~ NA,
+           #   phasing=="exclusion" ~ "aff_cp",
+           #   TRUE ~ paste(phasing,"phasing", sep="-")
+           # )
+           )
+  
+  
+
+  
   func_end()
-  return(gene_phasing %>%
-           mutate(n_mut=nrow(df_gene)) %>%
-           select(all_of(req_output_cols)))
+  return(annotated_result)
 }
 #' @keywords internal
 #' desicion tree if one variant already affects all copies in pre evaluation
@@ -2180,8 +2287,10 @@ eval_one_mut_affects_all <- function(df_gene, printLog, verbose){
     .[1,] %>%
     mutate(n_mut=nrow(df_gene),
            info=paste("all copies affected by variant:", mut_id),
-           conf=NA) %>%
-    select(gene, n_mut, score=vn_status, conf, info)
+           conf=1,
+           eval_by=ifelse(str_detect(class, "homdel"), "homdel","aff_cp")) %>%
+    select(gene, n_mut, score=vn_status, conf, info, eval_by, wt_cp) %>%
+    mutate(warning=NA, wt_cp_range=NA, phasing=NA)
   append_loglist(concern_info$info)
     #filter(str_detect(pre_info, "all copies affected")) %>% .[1,]
   func_end(verbose)
@@ -2193,8 +2302,13 @@ eval_one_mut <- function(df_gene, printLog, verbose){
   func_start(verbose)
   concern_info <- df_gene %>%
     mutate(n_mut=1,
-           conf=NA) %>%
-    select(gene, n_mut, score=vn_status, conf, info=pre_info)
+           conf=1,
+           eval_by="aff_cp") %>%
+    select(gene, n_mut, score=vn_status, conf, 
+           info=pre_info, 
+           wt_cp,
+           eval_by) %>%
+    mutate(warning=NA, wt_cp_range=NA, phasing=NA)
   append_loglist(concern_info$info)
   func_end(verbose)
   return(concern_info)
@@ -2210,14 +2324,14 @@ remove_duplicated_variants <- function(df_gene_raw, verbose){
       selected <- df_gene_raw %>% 
         filter(chr==VAR[["chr"]],
                pos==VAR[["pos"]]) %>%
-        filter(wt_cp==min(.$wt_cp)) %>%
+        #filter(wt_cp==min(.$wt_cp)) %>%
         ## if both vars have the same impac we just select the first
         .[1,]
       warning(
         "more than one variant detected at position:", 
         VAR[["chr"]], ":", VAR[["pos"]],
         "\n  maybe an indel with shifted annotation of position?",
-        "\nSelecting variant of highest relevance by lowest left wt-copies:",
+        "\nSelecting variant:",
         selected$mut_id)
       to_remove <- df_gene_raw %>% 
         filter(chr==VAR[["chr"]],
@@ -2302,6 +2416,7 @@ predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna,
       mat_phased_gene[[GENE]] <- full_phasing_result[[3]]
       mat_info_gene[[GENE]] <- full_phasing_result[[4]]
     } 
+    #print(eval_for_gene)
     end_gene_eval <- Sys.time()
     df_reduced <- eval_for_gene %>% as_tibble() %>%
       mutate(
