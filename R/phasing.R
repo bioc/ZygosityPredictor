@@ -32,6 +32,9 @@ unknown_main <- function(){
   all_unknown <- which(upper.tri(mat_phased)&mat_phased==0)
   intersect(all_unknown, get_main_mut_pos())
 }
+#' @importFrom stringr %>%
+#' @importFrom dplyr select filter mutate bind_rows
+#' @importFrom tibble as_tibble
 add_snps_to_matrices <- function(snps){
   func_start()
   snps_hap <- snps[which(!is.na(snps$block_final)),] %>%
@@ -112,6 +115,8 @@ append_phasing_matrices <- function(all_variants, all_pos, distCutOff){
   mat_info[c(1:nm), c(1:nm)] <<- mat_info_main
   func_end()
 }
+#' @importFrom magrittr %>%
+#' @importFrom purrr set_names
 get_main_mut_conns <- function(){
   lapply(main_muts, function(M){
     length(c(which(mat_phased[M,]!=0|is.na(mat_phased[M,])),
@@ -120,6 +125,10 @@ get_main_mut_conns <- function(){
   }) %>% unlist() %>%
     set_names(main_muts)
 }
+#' @importFrom magrittr %>%
+#' @importFrom tibble as_tibble
+#' @importFrom purrr set_names
+#' @importFrom igraph graph_from_data_frame all_shortest_paths
 get_next_path <- function(comb, distCutOff){
   func_start()
       
@@ -176,7 +185,10 @@ prioritize_combination <- function(){
   unphased <- which(is.na(mat_phased))
   relevant_dists <- mat_tmp[unphased] 
   relevant_dists[which(relevant_dists==0)] <- NA
-  shortest <- unphased[which(relevant_dists==min(relevant_dists, na.rm=T))] 
+  ## to suppress warning: Warning: no non-missing arguments to min; returning Inf
+  suppressWarnings(
+    shortest <- unphased[which(relevant_dists==min(relevant_dists, na.rm=T))] 
+  )
   ## pick first one, if two have the same distance
   if(length(shortest)==0){
     #stop("stop_here")
@@ -216,6 +228,10 @@ prioritize_combination <- function(){
   func_end()
   return(next_comb)
 }
+#' @importFrom magrittr %>%
+#' @importFrom tibble tibble
+#' @importFrom purrr set_names
+#' @importFrom dplyr bind_rows left_join select filter
 aggregate_phasing <- function(all_combs, df_gene, phasing_info){
   func_start()
   phasing_all_combs <- lapply(all_combs, function(mmp){
@@ -293,10 +309,10 @@ aggregate_phasing <- function(all_combs, df_gene, phasing_info){
   return(phasing_all_combs)
 }
 #' @keywords internal
-#' @importFrom stringr %>%
-#' @importFrom tibble column_to_rownames
-#' @importFrom dplyr as_tibble group_by mutate tibble tally 
-#' @importFrom purrr set_names
+#' @importFrom magrittr %>%
+#' @importFrom tibble tibble column_to_rownames as_tibble
+#' @importFrom dplyr group_by tally mutate ungroup rowwise pull filter summarize left_join select
+#' @importFrom stats chisq.test
 classify_combination <- function(classified_reads, ref_class1, ref_class2, 
                                  purity, printLog, 
                                  verbose=FALSE){
@@ -373,12 +389,16 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
     append_loglist("only mut1 detected, which is SNP")
   } else {
     ## check for similarity of numbers in both, mut1 and mut2 by chi-squared
-    sim_diff <- chisq.test(t(left_join(exp_diff, relevant_for_decision,
-                                       by="fac") %>% 
-                               select(exp, prob_sum)))
-    sim_same <- chisq.test(t(left_join(exp_same, relevant_for_decision,
-                                       by="fac") %>% 
-                               select(exp, prob_sum)))     
+    suppressWarnings(
+      sim_diff <- chisq.test(t(left_join(exp_diff, relevant_for_decision,
+                                         by="fac") %>% 
+                                 select(exp, prob_sum)))
+    )
+    suppressWarnings(
+      sim_same <- chisq.test(t(left_join(exp_same, relevant_for_decision,
+                                         by="fac") %>% 
+                                 select(exp, prob_sum)))  
+    )
     xsq_diff <- sim_diff$statistic[[1]]
     xsq_same <- sim_same$statistic[[1]]
     p_diff <- sim_diff$p.value
@@ -433,7 +453,43 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
   return(status_table)
 }  
 #' @keywords internal
-#' @importFrom stringr %>%
+#' description follows
+check_for_overlapping_reads <- function(bamDna, bamRna,
+                                        ref_chr1, 
+                                        ref_chr2, 
+                                        ref_pos1, 
+                                        ref_pos2, 
+                                        verbose=FALSE){
+  func_start()
+  dna_bam <- prepare_raw_bam_file(bamDna, 
+                                  ref_chr1, 
+                                  ref_chr2, 
+                                  ref_pos1, 
+                                  ref_pos2,
+                                  verbose) 
+  if(length(dna_bam)!=0){
+    dna_bam$origin <- "DNA"
+  }
+  if(!is.null(bamRna)){
+    rna_bam <- prepare_raw_bam_file(bamRna, 
+                                    ref_chr1, 
+                                    ref_chr2, 
+                                    ref_pos1, 
+                                    ref_pos2,
+                                    verbose)
+    if(length(rna_bam)==0){
+      rna_bam <- NULL
+    } else {
+      rna_bam$origin <- "RNA"
+    }
+  } else {
+    rna_bam <- NULL
+  }
+  func_end()
+  return(c(dna_bam, rna_bam))
+}
+#' @keywords internal
+#' @importFrom magrittr %>%
 #' @importFrom dplyr tibble bind_rows 
 classify_reads <- function(ref_pos1,
                            ref_pos2,
@@ -473,10 +529,12 @@ classify_reads <- function(ref_pos1,
   func_end(verbose)
   return(classified_reads)
 }
-phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna, verbose, geneDir, 
-                              phasing_type, showReadDetail){
+#' @importFrom magrittr %>%
+#' @importFrom tibble tibble
+#' @importFrom dplyr mutate
+phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna, verbose, 
+                              geneDir, phasing_type, showReadDetail){
   func_start()
-  #print(mat_gene_relcomb)
   append_loglist("Phasing:", comb)
   ## predefine empty output
   classified_main_comb <- tibble(comb=comb, status="null", nstatus=0, conf=0,
@@ -527,105 +585,108 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna, verbose, g
     ) %>%  
       mutate(
         dist=mat_dist[comb],
-        class_comb=paste(mat_gene_relcomb[,"class"][[2]], mat_gene_relcomb[,"class"][[1]], 
+        class_comb=paste(mat_gene_relcomb[,"class"][[2]], 
+                         mat_gene_relcomb[,"class"][[1]], 
                          sep="-"),
         comb=comb,
         phasing=comb
       ) 
   }   
-  #append_matrices(classified_main_comb)
   func_end()
   return(classified_main_comb)
 }
+#' @importFrom magrittr %>%
 append_matrices <- function(classified_main_comb, iterate=TRUE){
   func_start()
-  mat_old <- mat_phased
-  lapply(seq(1,nrow(classified_main_comb)), function(C){
-    mat_phased[classified_main_comb[C,]$comb] <<- 
-      classified_main_comb[C,]$nstatus
-    mat_info[classified_main_comb[C,]$comb] <<- 
-      classified_main_comb[C,]$phasing
-    return()
-  })
-  if(iterate==TRUE){
-    something_changed <- sum(mat_old, na.rm = T)!=sum(mat_phased, na.rm = T)
-    mat_new <- mat_phased
-    mat_new[is.na(mat_new)] <- 0
-    mat_old[is.na(mat_old)] <- 0
-    changes <- which(!mat_new==mat_old) 
-    i <- 1
-    while(i<=length(changes)){
-      m12 <- get_xy_index(changes[i], nrow(mat_new))
-      status <- mat_new[changes[i]]
-      ## get third mut/snp id that also has a non-null connection to one of the first ones 
-      m1_same_conn <- c(m12[1], which(mat_new[m12[1],]==1),
-                        which(mat_new[,m12[1]]==1)) %>% sort()
-      m2_same_conn <- c(m12[2],
-                        which(mat_new[m12[2],]==1),
-                        which(mat_new[,m12[2]]==1)) %>% sort()
-      if(sum(c(length(m1_same_conn), length(m2_same_conn)))>2){
-        if(status==1){
-          conns <- sort(unique(c(m1_same_conn, m2_same_conn)))
-          for(x in 1:(length(conns)-1)){
-            for(j in (x+1):length(conns)){
-              p1 <- conns[x]
-              p2 <- conns[j]
-              notxf <- m12[which(!m12 %in% c(p1,p2))]
-              if(length(notxf)>=1){
-                notx <- min(notxf)
+  if(nrow(classified_main_comb)>0){
+    mat_old <- mat_phased
+    lapply(seq(1,nrow(classified_main_comb)), function(C){
+      mat_phased[classified_main_comb[C,]$comb] <<- 
+        classified_main_comb[C,]$nstatus
+      mat_info[classified_main_comb[C,]$comb] <<- 
+        classified_main_comb[C,]$phasing
+      return()
+    })
+    if(iterate==TRUE){
+      something_changed <- sum(mat_old, na.rm = T)!=sum(mat_phased, na.rm = T)
+      mat_new <- mat_phased
+      mat_new[is.na(mat_new)] <- 0
+      mat_old[is.na(mat_old)] <- 0
+      changes <- which(!mat_new==mat_old) 
+      i <- 1
+      while(i<=length(changes)){
+        m12 <- get_xy_index(changes[i], nrow(mat_new))
+        status <- mat_new[changes[i]]
+        ## get third mut/snp id that also has a non-null connection to one of the first ones 
+        m1_same_conn <- c(m12[1], which(mat_new[m12[1],]==1),
+                          which(mat_new[,m12[1]]==1)) %>% sort()
+        m2_same_conn <- c(m12[2],
+                          which(mat_new[m12[2],]==1),
+                          which(mat_new[,m12[2]]==1)) %>% sort()
+        if(sum(c(length(m1_same_conn), length(m2_same_conn)))>2){
+          if(status==1){
+            conns <- sort(unique(c(m1_same_conn, m2_same_conn)))
+            for(x in 1:(length(conns)-1)){
+              for(j in (x+1):length(conns)){
+                p1 <- conns[x]
+                p2 <- conns[j]
+                notxf <- m12[which(!m12 %in% c(p1,p2))]
+                if(length(notxf)>=1){
+                  notx <- min(notxf)
+                  if(is.na(mat_phased[p1,p2])|mat_phased[p1,p2]==0){
+                    combined_info <- paste(
+                      c(mat_info[
+                        min(c(notx, p1)),
+                        max(c(notx, p1))
+                      ], mat_info[
+                        min(c(notx, p2)),
+                        max(c(notx, p2))                   
+                      ]), 
+                      collapse="-")
+                    mat_info[p1,p2] <<- combined_info   
+                  }
+                } 
                 if(is.na(mat_phased[p1,p2])|mat_phased[p1,p2]==0){
-                  combined_info <- paste(
-                    c(mat_info[
-                      min(c(notx, p1)),
-                      max(c(notx, p1))
-                    ], mat_info[
-                      min(c(notx, p2)),
-                      max(c(notx, p2))                   
-                    ]), 
-                    collapse="-")
-                  mat_info[p1,p2] <<- combined_info   
-                }
-              } 
-              if(is.na(mat_phased[p1,p2])|mat_phased[p1,p2]==0){
-                mat_phased[p1,p2] <<- 1
-              }
-            }
-          }
-        } else {
-          for(x in m1_same_conn){
-            for(j in m2_same_conn){
-              sv <- sort(c(x,j))
-              p1 <- sv[1]
-              p2 <- sv[2]
-              notxf <- m12[which(!m12 %in% c(x,j))]
-              if(length(notxf)>=1){
-                notx <- min(notxf)
-                if(is.na(mat_phased[p1,p2])|mat_phased[p1,p2]==0){
-                  mat_info[p1, p2] <<- paste(
-                    c(mat_info[
-                      min(c(notx, x)),
-                      max(c(notx, x))
-                    ], mat_info[
-                      min(c(notx, j)),
-                      max(c(notx, j))                   
-                    ]), 
-                    collapse="-")
+                  mat_phased[p1,p2] <<- 1
                 }
               }
-              if(is.na(mat_phased[p1, p2])|mat_phased[p1, p2]==0){
-                mat_phased[p1, p2] <<- 2
-              }        
-              
             }
-          }
-        }      
-      }
-      i <- i+1 
-    } 
+          } else {
+            for(x in m1_same_conn){
+              for(j in m2_same_conn){
+                sv <- sort(c(x,j))
+                p1 <- sv[1]
+                p2 <- sv[2]
+                notxf <- m12[which(!m12 %in% c(x,j))]
+                if(length(notxf)>=1){
+                  notx <- min(notxf)
+                  if(is.na(mat_phased[p1,p2])|mat_phased[p1,p2]==0){
+                    mat_info[p1, p2] <<- paste(
+                      c(mat_info[
+                        min(c(notx, x)),
+                        max(c(notx, x))
+                      ], mat_info[
+                        min(c(notx, j)),
+                        max(c(notx, j))                   
+                      ]), 
+                      collapse="-")
+                  }
+                }
+                if(is.na(mat_phased[p1, p2])|mat_phased[p1, p2]==0){
+                  mat_phased[p1, p2] <<- 2
+                }        
+              }
+            }
+          }      
+        }
+        i <- i+1 
+      } 
+    }
   }
   func_end()
 }
-
+#' @importFrom tibble tibble
+#' @importFrom dplyr  bind_rows
 perform_direct_phasing <- function(mat_gene, bamDna, bamRna, purity, 
                                    verbose, printLog, showReadDetail, geneDir){
   func_start()
@@ -653,14 +714,25 @@ perform_direct_phasing <- function(mat_gene, bamDna, bamRna, purity,
 }
 #' @keywords internal
 #' description follows
-#' @importFrom stringr %>%
-#' @importFrom purrr map_chr set_names
-#' @importFrom dplyr mutate nth select filter bind_rows
-phase <- function(df_gene, bamDna, bamRna, 
-                  showReadDetail, purity, sex, haploBlocks, phasedVcf,
-                  distCutOff, printLog, verbose, logDir, refGen, somCna, 
-                  snpQualityCutOff, 
-                  phasingMode){
+#' @importFrom magrittr %>%
+#' @importFrom stringr str_split str_detect
+#' @importFrom dplyr case_when bind_rows mutate rowwise ungroup
+#' @importFrom tibble as_tibble
+phase <- function(df_gene, 
+                  bamDna, 
+                  bamRna, 
+                  showReadDetail=FALSE, 
+                  purity, 
+                  sex, 
+                  haploBlocks=NULL, 
+                  phasedVcf=NULL,
+                  distCutOff=5000, 
+                  printLog=FALSE, 
+                  verbose=FALSE, 
+                  logDir=NULL, 
+                  somCna, 
+                  snpQualityCutOff=1, 
+                  phasingMode="full"){
   vm(as.character(sys.call()[1]), verbose, 1)
   #haploblock_phasing <- NULL
   GENE <- unique(df_gene$gene)
@@ -690,7 +762,7 @@ phase <- function(df_gene, bamDna, bamRna,
   if(length(unknown_main())>0&!is.null(phasedVcf)){
     append_loglist("unphased combinations left --> Initialize SNP phasing")
     ## missing combinations in main muts --> start secondary phasing approaches
-    lsnps <- load_snps(df_gene, phasedVcf, haploBlocks, refGen, distCutOff, verbose, somCna, snpQualityCutOff)
+    lsnps <- load_snps(df_gene, phasedVcf, haploBlocks,  distCutOff, verbose, somCna, snpQualityCutOff)
     store_log(geneDir, lsnps, "lsnps.tsv")
     if(!is.null(lsnps)){
       snps <- lsnps %>%
@@ -791,6 +863,7 @@ phase <- function(df_gene, bamDna, bamRna,
   return(list(phasing_all_combs, phasing_info_export, mat_phased, mat_info))
   
 }
+#' @keywords internal
 calc_left_wt_copies <- function(mtcn, nstatus, aff_copies1, aff_copies2){
   left_wt_copies <- ifelse(nstatus==2,
                            mtcn-sum(as.numeric(aff_copies1), 
@@ -799,8 +872,11 @@ calc_left_wt_copies <- function(mtcn, nstatus, aff_copies1, aff_copies2){
                                     as.numeric(aff_copies2)))
   return(as.numeric(left_wt_copies))
 }
-
-
+#' @keywords internal
+#' @importFrom GenomicRanges GRanges
+#' @importFrom stringr str_detect str_replace_all
+#' @importFrom dplyr mutate
+#' @importFrom tibble as_tibble
 make_both_annotations <- function(region_to_load_in){
   sec <- region_to_load_in %>%
     as_tibble()
@@ -816,9 +892,16 @@ make_both_annotations <- function(region_to_load_in){
   fin <- c(region_to_load_in, prim)
   return(fin)
 }
-
-
-loadVcf <- function(vcf_in, chrom, region_to_load_in, refGen, verbose, somCna,which="all",
+#' @importFrom GenomicRanges GRanges
+#' @importFrom DelayedArray rowRanges
+#' @importFrom IRanges subsetByOverlaps
+#' @importFrom stringr str_detect str_replace str_replace_all
+#' @importFrom dplyr mutate pull nth 
+#' @importFrom tibble as_tibble
+#' @importFrom purrr compact
+#' @importFrom VariantAnnotation readVcf geno info
+#' @importFrom Rsamtools seqnamesTabix TabixFile
+loadVcf <- function(vcf_in, chrom, region_to_load_in, verbose, somCna,which="all",
                     colname_gt="GT", colname_af="AF", colname_dp4="DP4", 
                     dkfz=FALSE){
   func_start(verbose)
@@ -841,7 +924,7 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in, refGen, verbose, somCna,wh
       if(chrom %in% Rsamtools::seqnamesTabix(VCF)){
         #print("chrom in seqnames")
         loadedVcf <- 
-          readVcf(VCF, refGen, 
+          readVcf(VCF, 
                   param=region_to_load)
         combVcf <- rowRanges(loadedVcf) 
         #print(1111111111)
@@ -871,13 +954,13 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in, refGen, verbose, somCna,wh
                                 "[^0-9]"))){
         message("loading")
         #print(VCF)
-        loadedVcf <- VariantAnnotation::readVcf(VCF, refGen)
+        loadedVcf <- VariantAnnotation::readVcf(VCF)
         gt <- VariantAnnotation::geno(loadedVcf)[[colname_gt]] %>% 
           as.character()
         af <- VariantAnnotation::info(loadedVcf)[[colname_af]] 
         dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]]
         rangesVcf <- rowRanges(loadedVcf) 
-        print(rangesVcf)
+       #print(rangesVcf)
         rangesVcf$gt <- gt
         rangesVcf$af <- af
         rangesVcf$dp4 <- dp4
@@ -916,20 +999,25 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in, refGen, verbose, somCna,wh
   func_end(verbose)
   return(filtered_vcf)
 }
+#' @importFrom dplyr case_when
 get_string_status <- function(nstatus){
   case_when(nstatus==2 ~ "diff",
             nstatus==1 ~ "same",
             TRUE ~ "null"
   )
 }
-load_snps <- function(df_gene, phasedVcf, haploBlocks, refGen, distCutOff, verbose, somCna, snpQualityCutOff, which="all"){
+#' @importFrom IRanges mergeByOverlaps
+#' @importFrom GenomicRanges GRanges
+#' @importFrom dplyr filter select mutate left_join
+#' @importFrom tibble as_tibble
+load_snps <- function(df_gene, phasedVcf, haploBlocks, distCutOff, verbose, somCna, snpQualityCutOff, which="all"){
   func_start()
   region_to_load <- paste0(unique(df_gene$chr), ":", min(df_gene$pos)-distCutOff,
                            "-", max(df_gene$pos)+distCutOff) %>%
     GRanges()  %>%
     split_genomic_range(.,df_gene$pos)
   
-  loaded_vcf_hz <- loadVcf(phasedVcf, unique(df_gene$chr), region_to_load, refGen, 
+  loaded_vcf_hz <- loadVcf(phasedVcf, unique(df_gene$chr), region_to_load,  
                            verbose, somCna)
   if(length(loaded_vcf_hz)>0){
     fsnps <- loaded_vcf_hz %>% as_tibble() %>%
@@ -1014,7 +1102,9 @@ aggregate_probs <- function(ps){
     return(ps) 
   }
 }
-
+#' @importFrom stringr str_sub
+#' @importFrom stats na.omit
+#' @importFrom dplyr pull all_of
 extract_subseq <- function(ref_pos, element_mut, parsed_read, 
                            length_indel, string){
   pos_in_seq <- ref_pos-element_mut$map_start+1
@@ -1029,8 +1119,8 @@ extract_subseq <- function(ref_pos, element_mut, parsed_read,
   full_remaining <- paste0(subseq_in_element, subseq_in_following_elements)
   return(str_sub(full_remaining, start=1, end=length_indel))
 }
-
-
+#' @importFrom stringr str_sub
+#' @importFrom tibble tibble
 extract_snv <- function(ref_pos, element_mut){
   ## get cigar element in which reference position in located
   pos_in_seq <- ref_pos-element_mut$map_start+1
@@ -1045,7 +1135,8 @@ extract_snv <- function(ref_pos, element_mut){
   return(tibble(base=base, qual=qual, info="mapped", len_indel=NA,
                 exp_indel=NA))
 }
-
+#' @importFrom stringr str_sub
+#' @importFrom tibble tibble
 extract_insertion <- function(ref_pos, parsed_read, element_mut, length_ins){
   ## insertion are always indicated by the I type. The reference position tells
   ## the position in front of the I segment, which means we are looking for
@@ -1103,7 +1194,7 @@ extract_insertion <- function(ref_pos, parsed_read, element_mut, length_ins){
   return(tibble(base=base, qual=0, info=info, len_indel=len, 
                 exp_indel=expected_indel_detected))
 }
-
+#' @importFrom tibble tibble
 extract_deletion <- function(ref_pos, parsed_read, element_mut, length_del){
   expected_indel_detected <- FALSE
   len <- NA
@@ -1149,7 +1240,7 @@ extract_deletion <- function(ref_pos, parsed_read, element_mut, length_del){
   return(tibble(base=base, qual=0, info=info, len_indel=len,
                 exp_indel=expected_indel_detected))
 }
-
+#' @importFrom dplyr between
 cigar_element <- function(parsed_read, ref_pos){
   #func_start()
   cigel <- parsed_read[which(between(rep(ref_pos, nrow(parsed_read)), 
@@ -1159,7 +1250,7 @@ cigar_element <- function(parsed_read, ref_pos){
   #func_end()
   return(cigel)
 }
-
+#' @importFrom tibble tibble
 extract_base_at_refpos <- function(parsed_read, ref_pos, class, ref_alt, 
                                    ref_ref){
   #func_start()
@@ -1186,80 +1277,9 @@ extract_base_at_refpos <- function(parsed_read, ref_pos, class, ref_alt,
   #func_end()
   return(base_info %>% mutate(class=class, mapq=element_mut$mapq))
 }
-
-#' @keywords internal
-#' @importFrom stringr %>% str_replace str_sub
-#' @importFrom dplyr between case_when rowwise filter
-check_mut_presence <- function(read_structure, ref_pos,
-                               ref_alt, ref_ref, ref_class, verbose=FALSE){
-  map_start <- map_end <- . <- NULL
-  ## check if read is spanned out:
-  element_mut <- read_structure %>% rowwise() %>%
-    filter(between(ref_pos, map_start, map_end)) %>%
-    .[1,]
-  if(element_mut$type %in% c("N", "D")){
-    mut_at_read <- -10
-  } else {
-    if(ref_class %in% c("snv", "snp")){
-      pos_in_seq <- ref_pos-element_mut$map_start+1
-      base <- 
-        str_sub(element_mut$seq,
-                start=pos_in_seq,
-                end=pos_in_seq) 
-      qual <- 
-        str_sub(element_mut$qual,
-                start=pos_in_seq,
-                end=pos_in_seq)
-      mut_at_read <- case_when(
-        base==ref_alt ~ 1,
-        base==ref_ref ~ 0,
-        TRUE ~ -2
-      ) 
-    } else if(ref_class=="ins"){
-      cat_at_pos <- 
-        read_structure[which(read_structure$map_end==ref_pos)+1,] %>%
-        .[which(.$type=="I"),] 
-      if(nrow(cat_at_pos)==0){
-        mut_at_read <- 0
-        base <- NA
-        qual <- NA
-      } else {  
-        length_ins <- str_replace(ref_alt, paste0("^", ref_ref), "") %>%
-          nchar()
-        if(length_ins==cat_at_pos[1,]$width){
-          mut_at_read <- 1
-        } else {
-          mut_at_read <- -2
-        }
-        base <- cat_at_pos[1,]$seq
-        qual <- cat_at_pos[1,]$qual
-      }
-    } else if(ref_class=="del"){
-      cat_at_pos <- 
-        read_structure[which(read_structure$map_end==ref_pos)+1,]%>%
-        .[which(.$type=="D"),]
-      
-      if(nrow(cat_at_pos)==0){
-        mut_at_read <- 0
-        base <- NA
-        qual <- NA
-      } else {  
-        length_del <- str_replace(ref_ref, paste0("^", ref_alt), "") %>%
-          nchar()
-        base <- NA
-        qual <- NA
-        if(length_del==cat_at_pos[1,]$width){
-          mut_at_read <- 1
-        } else {
-          mut_at_read <- -2
-        }
-      }
-    }
-  }
-  return(tibble(base=base,
-                qual=qual,
-                mut_at_read=mut_at_read))
-}
+#' @importFrom stringr str_sub
+#' @importFrom dplyr bind_rows mutate na_if
+#' @importFrom GenomicAlignments start end width
 parse_cigar <- function(bam, qname){
   #func_start()
   paired_reads <- bam[which(bam$qname==qname)] 
@@ -1309,8 +1329,8 @@ parse_cigar <- function(bam, qname){
   #func_end()
   return(raw_cigs)
 }
+#' @importFrom dplyr case_when
 evaluate_base <- function(base_info, ref_alt, ref_ref){
-  #func_start()
   if(base_info$class %in% c("snv", "snp")){
     detected <- case_when(
       base_info$base==ref_alt ~ 1,
@@ -1330,16 +1350,11 @@ evaluate_base <- function(base_info, ref_alt, ref_ref){
       TRUE ~ -2
     )
   }
-  #func_end()
   return(detected)
 }
 #' @keywords internal
 #' description follows
-#' @importFrom stringr %>%
-#' @importFrom tibble column_to_rownames rownames_to_column
-#' @importFrom purrr set_names
-#' @importFrom dplyr case_when bind_rows as_tibble mutate
-#' @importFrom GenomicRanges seqnames
+#' @importFrom dplyr case_when 
 core_tool <- function(qname, bam,
                       ref_pos1, ref_pos2,
                       ref_alt1, ref_alt2,
@@ -1369,7 +1384,6 @@ core_tool <- function(qname, bam,
       TRUE ~ "dev_var"
     )    
   }
-  #func_end()
   return(c(qname=qname, result=final_assignment,
            origin=unique(parsed_read$origin),
            baseq1=base_info1$qual,

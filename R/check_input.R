@@ -1,6 +1,7 @@
 #' @keywords internal
 #' description follows
 #' @importFrom stringr str_match
+#' @importFrom dplyr case_when
 #' @importFrom GenomicRanges elementMetadata elementMetadata<-
 assign_correct_colnames <- function(obj, type){
   #vm(as.character(sys.call()[1]), verbose, 1)
@@ -97,7 +98,7 @@ assign_correct_colnames <- function(obj, type){
   return(obj)
 }
 #' @keywords internal
-#' description follows
+#' no dependencies
 formula_checks <- function(chr, af, tcn, purity, sex, c_normal, af_normal=0.5){
   purity <- check_purity(purity)
   af <- check_af(af)
@@ -388,9 +389,8 @@ check_ploidy <- function(ploidy){
 #' description follows
 #' @importFrom stringr str_detect
 check_sex <- function(sex){
-  #func_start()
   . <- NULL
-  allowed_sex <- c("male", "m", "female", "f") %>% c(.,toupper(.))
+  allowed_sex <- allowed_inputs("sex_names")
   if(!sex %in% allowed_sex){
     allowed_sex_to_print <- paste(allowed_sex, collapse = "\', \'") %>% 
       paste0("\'", ., "\'")
@@ -403,23 +403,20 @@ check_sex <- function(sex){
       return("male")
     }
   }
-  #func_end()
 }
 #' @keywords internal
 #' description follows 
 check_bam <- function(bamDna){
-  #func_start()
   if(file.exists(bamDna)){
     return(bamDna)
   } else {
     stop("input bamDna does not exist")
   }
-  #func_end()
 }
 #' @keywords internal
 #' description follows
+#' @importFrom Rsamtools TabixFile
 check_vcf <- function(vcf){
-  #func_start()
   if(is.null(vcf)){
     return(NULL)
   } else if(!sum(unlist(lapply(vcf, file.exists)))==length(vcf)){
@@ -434,8 +431,6 @@ check_vcf <- function(vcf){
     })
     return(processed_vcf)
   }
-  #func_end()
-  #return(checked_vcf)
 }
 #' @keywords internal
 #' description follows
@@ -460,10 +455,8 @@ check_haploblocks <- function(haploBlocks){
     return(haploBlocks)    
   }
 }
-
 #' @keywords internal
 allowed_inputs <- function(which_one){
-  #func_start()
   . <- NULL
   type_list <- list(
     cna_homdel_annotation = paste(c("HOMDEL", "HomoDel", "HomoDEL", "HOMODEL", 
@@ -481,19 +474,8 @@ allowed_inputs <- function(which_one){
     colnames_tcn = c("TCN", "tcn", "Tcn"),
     colnames_cna_type = c("cna_type", "CNA_type", "Cna_Type", "CNA_Type"),
     colnames_all_imb = c("allelic_imbalance", "all_imb", "AI"),
-    colnames_genotype = c("gt_cna", "genotype", "GT", "gt")
+    colnames_genotype = c("gt_cna", "genotype", "GT", "gt"),
+    sex_names = c("male", "m", "female", "f") %>% c(.,toupper(.))
   )
-  #func_end()
   return(type_list[[which_one]])
 }
-
-
-
-
-
-
-
-
-
-
-

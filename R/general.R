@@ -29,6 +29,7 @@ increment_call_depth <- function() {
 decrement_call_depth <- function() {
   call_depth <<- call_depth - 1
 }
+#' @importFrom readr write_tsv
 store_log <- function(geneDir, obj, file){
   if(!is.null(geneDir)){
     if(!is.null(obj)){
@@ -403,43 +404,6 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex,
   return(df_germ)
 }
 
-
-#' @keywords internal
-#' description follows
-check_for_overlapping_reads <- function(bamDna, bamRna,
-                                        ref_chr1, 
-                                        ref_chr2, 
-                                        ref_pos1, 
-                                        ref_pos2, 
-                                        verbose=FALSE){
-  func_start()
-  dna_bam <- prepare_raw_bam_file(bamDna, 
-                                  ref_chr1, 
-                                  ref_chr2, 
-                                  ref_pos1, 
-                                  ref_pos2,
-                                  verbose) 
-  if(length(dna_bam)!=0){
-    dna_bam$origin <- "DNA"
-  }
-  if(!is.null(bamRna)){
-    rna_bam <- prepare_raw_bam_file(bamRna, 
-                                    ref_chr1, 
-                                    ref_chr2, 
-                                    ref_pos1, 
-                                    ref_pos2,
-                                    verbose)
-    if(length(rna_bam)==0){
-      rna_bam <- NULL
-    } else {
-      rna_bam$origin <- "RNA"
-    }
-  } else {
-    rna_bam <- NULL
-  }
-  func_end()
-  return(c(dna_bam, rna_bam))
-}
 ascii_to_dec <- function(ascii_encoded){
   if(is.na(ascii_encoded)){
     return(NA)
@@ -451,14 +415,15 @@ ascii_to_dec <- function(ascii_encoded){
     # Convert the QUAL string to raw hexadecimal
     return(10^exp)    
   }
-
 }
 
-
+#' @importFrom knitr kable
 print_tibble <- function(tbl_in){
   res <- paste(as.character(knitr::kable(tbl_in)), collapse="\n")
   return(res)
 }
+#' @importFrom GenomicRanges GRanges seqnames start end
+#' @importFrom IRanges IRanges
 split_genomic_range <- function(gr, exclude_positions) {
   # Sort the exclude_positions and ensure they are unique
   exclude_positions <- sort(unique(exclude_positions))
@@ -489,12 +454,10 @@ split_genomic_range <- function(gr, exclude_positions) {
   split_gr <- do.call(c, subranges)
   return(split_gr)
 }
-
+#' @keywords internal
 make_dist_matrix <- function(v, all_variants, distCutOff){
-  
   n <- length(v)
   mat <- matrix(0, nrow = n, ncol = n)
-  
   for (i in 1:n) {
     mat[i, ] <- abs(v - v[i])
   }
@@ -504,64 +467,31 @@ make_dist_matrix <- function(v, all_variants, distCutOff){
   mat[lower.tri(mat)] <- 0
   return(mat) 
 }
-
-
-get_general_info <- function(most_relevant_comb, all_comb, df_gene){
-  func_start()
-  if(str_count(paste(all_comb$status, collapse=' '),
-               'diff')==nrow(all_comb)&
-     nrow(all_comb)>=mean(as.numeric(df_gene$tcn))){ 
-    
-    info <- paste(
-      'unclear: all affected is very likely because all',nrow(all_comb),
-      'mutations are at different copies and tcn=', 
-      mean(as.numeric(df_gene$tcn)),
-      'tumor might be subclonal and therefore wt-copies left')
-#  } else if(nrow(all_comb)>3){
-    # info <-      paste('unclear: very high number of mutations...', 
-    #                    'probably wt copies left but please check variant table')
-  } else {
-    # info <- paste0(most_relevant_comb$phasing, "-phasing of ", most_relevant_comb$comb, ": ", most_relevant_comb$status, 
-    #                "; left wt cp: ", round(most_relevant_comb$wt_cp, 2)) 
-    info <- NA
-  }
-  func_end()
-  return(info)
-}
-
-get_unphased_info <- function(most_relevant_comb, all_comb){
-  func_start()
-  all_comb_unphased <- all_comb[which(all_comb$nstatus==0),]
-  n_unphased <- nrow(all_comb_unphased)
-  if(n_unphased>0){
-    unphased <- TRUE
-    unphased_info_pre <- paste(n_unphased, "of", 
-                        nrow(all_comb), "unphased combinations:")
-    if(most_relevant_comb$score==2){
-      ## unphased ones do not matter
-      unphased_info <- paste(unphased_info_pre, "But one affects all copies")  
+#' @importFrom stringr str_detect %>%
+#' @importFrom dplyr filter pull
+find_unplaus_issues <- function(unplaus){
+  if(nrow(unplaus)>0){
+    if(any(str_detect(unplaus$unplausible, "1"))){
+      issues <- unplaus %>%
+        filter(str_detect(unplausible, "1")) %>%
+        pull(comb) %>%
+        paste(collapse = ", ") %>%
+        paste("unplausible phasing combs:",.)
     } else {
-      unphased_info <- paste(unphased_info_pre, "Combs", 
-                        paste(all_comb_unphased$comb, collapse = ", "), 
-                        "might affect all copies") 
-    }
+      issues <- NA
+    }    
   } else {
-    unphased_info <- "all combinations solved"
-    unphased <- FALSE
+    issues <- NA
   }
-  func_end()
-  return(tibble(info=unphased_info, unphased=unphased))
 }
-
-
+#' @importFrom dplyr arrange case_when desc mutate pull select
+#' @importFrom stringr %>% str_detect 
 eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
   func_start()
-  
   rare_case <- ""
   most_relevant_comb <- all_comb %>%
     arrange(desc(score), wt_cp, desc(conf)) %>%
-    .[1,]  
-  
+    .[1,] 
   if(most_relevant_comb$score==2){
     ## take most relevant combination
     gene_clear <- TRUE
@@ -602,15 +532,13 @@ eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
       ## evaluate all combinatioons
       if(0 %in% all_comb$score){
         ## potentially reachable all copies affectd by unphased combinations
-        gene_clear <- FALSE
-        wt_cp_clear <- FALSE
+        gene_clear <- wt_cp_clear <- FALSE
         case <- "morecomb_unphased"
         conf <- 0
         conf_case <- "poss_allaff_unphased"
         eval <- NA
       } else {
         ## each combination could be solved
-        
         gene_clear <- TRUE
         if(any(!is.na(all_comb$wt_cp))){
           if(sum(!is.na(all_comb$wt_cp))==nrow(all_comb)){
@@ -626,12 +554,11 @@ eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
               case <- "morecomb_wtNA"
             }            
           }
-
         } else {
           ## no wt copies annoatted 
           wt_cp_clear <- FALSE
           case <- "morecomb_onlyexc"
-        }          
+        }
         
         if(min(all_comb$min_poss_wt_cp, na.rm=TRUE)<0.5){
             ## if this is the case, a possible diff would lead to all copies affected but it was phased as same
@@ -645,7 +572,6 @@ eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
               prod()
             rare_case <- " confidence adjusted"
             conf_case <- "morecomb_poss_allaff_but_same"
-            
             all_phasing_annotations <- all_comb[which(!is.na(all_comb$phasing)),]
             if(nrow(all_phasing_annotations)>0){
               merged <- paste(all_phasing_annotations$phasing, collapse = ", ")
@@ -666,7 +592,6 @@ eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
       } ## each combination was solved
     } ## more than one comb
   } ## max score = 1
-  
   if(gene_clear){
     gene_result <- most_relevant_comb %>%
       mutate(info=paste("most relevant phasing combination:",comb)) %>%
@@ -681,27 +606,12 @@ eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
   if(wt_cp_clear){
     wt_cp_result <- gene_result 
   } else {
-
     wt_cp_result <- gene_result %>%
       select(-wt_cp) %>%
       mutate(wt_cp=NA)
   }
   unplaus <- all_comb[which(!is.na(all_comb$unplausible)),]
-  if(nrow(unplaus)>0){
-  #if(any(!is.na(all_comb$unplausible))){
-    if(any(str_detect(unplaus$unplausible, "1"))){
-      
-      issues <- unplaus %>%
-        filter(str_detect(unplausible, "1")) %>%
-        pull(comb) %>%
-        paste(collapse = ", ") %>%
-        paste("unplausible phasing combs:",.)
-    } else {
-      issues <- NA
-    }    
-  } else {
-    issues <- NA
-  }
+  issues <- find_unplaus_issues(unplaus)
   annotated_result <- wt_cp_result %>%
     mutate(conf=conf, 
            gene_clear=gene_clear, wt_cp_clear=wt_cp_clear, 
@@ -716,8 +626,10 @@ eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
 }
 #' @keywords internal
 #' desicion tree if one variant already affects all copies in pre evaluation
+#' @importFrom dplyr mutate select filter
+#' @importFrom stringr str_detect
 eval_one_mut_affects_all <- function(df_gene, printLog, verbose){
-  func_start(verbose)
+  func_start()
   concern_info <- df_gene %>% 
     filter(vn_status==2) %>%
     .[1,] %>%
@@ -728,11 +640,12 @@ eval_one_mut_affects_all <- function(df_gene, printLog, verbose){
     select(gene, n_mut, score=vn_status, conf, info, eval_by, wt_cp) %>%
     mutate(warning=NA, wt_cp_range=NA, phasing=NA)
   append_loglist(concern_info$info)
-  func_end(verbose)
+  func_end()
   return(concern_info)
 }
 #' @keywords internal
 #' if no variant affecta all copies
+#' @importFrom dplyr mutate select
 eval_one_mut <- function(df_gene, printLog, verbose){
   func_start(verbose)
   concern_info <- df_gene %>%
@@ -748,6 +661,23 @@ eval_one_mut <- function(df_gene, printLog, verbose){
   func_end(verbose)
   return(concern_info)
 }
+eval_lost_in_tumor <- function(df_gene, printLog, verbose){
+  func_start(verbose)
+  concern_info <- df_gene %>%
+    mutate(n_mut=1,
+           conf=1,
+           eval_by="allele-freq",
+           score=1) %>%
+    select(gene, n_mut, score, conf, 
+           info=pre_info, 
+           wt_cp,
+           eval_by) %>%
+    mutate(warning="variant lost in tumor", wt_cp_range=NA, phasing=NA)
+  append_loglist(concern_info$info)
+  func_end(verbose)
+  return(concern_info)
+}
+#' @importFrom dplyr mutate select filter left_join bind_rows
 remove_duplicated_variants <- function(df_gene_raw, verbose){
   vm(as.character(sys.call()[1]), verbose, 1)
   n_vars_per_pos <- df_gene_raw %>%
@@ -790,13 +720,13 @@ remove_duplicated_variants <- function(df_gene_raw, verbose){
 }
 #' @keywords internal
 #' description follows
-#' @importFrom stringr %>% str_replace_all str_count str_detect
-#' @importFrom dplyr as_tibble group_by relocate bind_rows left_join select tally mutate filter nth relocate
+#' @importFrom stringr %>%
+#' @importFrom dplyr filter mutate as_tibble case_when
 predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna, 
                                       bamRna, showReadDetail,
                                       printLog, purity, sex, haploBlocks,
                                       phasedVcf, distCutOff, 
-                                      verbose, logDir, refGen, somCna, 
+                                      verbose, logDir, somCna, 
                                       snpQualityCutOff, 
                                       phasingMode){
   #func_start(verbose)
@@ -812,23 +742,28 @@ predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna,
   
   ## all germline variants which are lost in the tumor are excluded, 
   ## vn_status = -1
-  df_gene_raw <- pre_df_gene%>%
-    filter(vn_status>=0)
   ## check if variants at the same position are present
-  df_gene <- remove_duplicated_variants(df_gene_raw, verbose)
+  df_gene_raw <- remove_duplicated_variants(pre_df_gene, verbose)
+  df_gene <- df_gene_raw %>%
+    filter(vn_status>=0)
   ## check if variants remain in that gene
-  if(!nrow(df_gene)==0){
-    if(any(df_gene$vn_status==2)){
+  if(nrow(df_gene)==0){
+    eval_for_gene <- eval_lost_in_tumor(df_gene_raw, printLog, 
+                                  verbose)
+   #print(eval_for_gene)
+      ## all variants lost in tumor
+      append_loglist("all variants lost in tumor")
+  } else if(any(df_gene$vn_status==2)){
       append_loglist("one of", nrow(df_gene), "variants affects all copies")
       eval_for_gene <- eval_one_mut_affects_all(df_gene, printLog, 
                                                 verbose)
     ## (2): if only one variant is present  
-    } else if(nrow(df_gene)==1){
+  } else if(nrow(df_gene)==1){
       append_loglist("one variant that does ot affect all copies")
       eval_for_gene <- eval_one_mut(df_gene, printLog, 
                                     verbose)
     ## (3): more than one variant present in gene   
-    } else {  
+  } else {  
       append_loglist(nrow(df_gene),
             "heterozygous variants detected: Initializing haplotype phasing")
       #print(haploBlocks)
@@ -836,7 +771,7 @@ predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna,
       ## second one indirect phasing combinations
       full_phasing_result <- phase(df_gene, bamDna, bamRna, showReadDetail,
                         purity, sex, haploBlocks, phasedVcf,
-                        distCutOff, printLog, verbose, logDir, refGen, somCna, 
+                        distCutOff, printLog, verbose, logDir, somCna, 
                         snpQualityCutOff, 
                         phasingMode)
       all_comb <- full_phasing_result[[1]] %>%
@@ -850,10 +785,10 @@ predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna,
       mat_info_gene <- list()
       mat_phased_gene[[GENE]] <- full_phasing_result[[3]]
       mat_info_gene[[GENE]] <- full_phasing_result[[4]]
-    } 
+  } 
     #print(eval_for_gene)
-    end_gene_eval <- Sys.time()
-    df_reduced <- eval_for_gene %>% as_tibble() %>%
+  end_gene_eval <- Sys.time()
+  df_reduced <- eval_for_gene %>% as_tibble() %>%
       mutate(
         status=case_when(
           score==2 ~ "all_copies_affected",
@@ -862,18 +797,14 @@ predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna,
         ),  
         eval_time_s=pt(start_gene_eval, end_gene_eval)
         ) 
-    zygosity_gene <- list(pre_df_gene, 
+  zygosity_gene <- list(pre_df_gene, 
                           list(df_reduced, 
                                all_comb,
                                phasing_info,
                                mat_phased_gene,
                                mat_info_gene)
                           )
-  } else {
-    ## all variants lost in tumor
-    append_loglist("all variants lost in tumor")
-    zygosity_gene <- list(pre_df_gene, NULL)
-  } 
+ #print(zygosity_gene) 
   log_message <- unlist(loglist) %>% paste(collapse = "\n")
   func_end(verbose)
   return(append(zygosity_gene, log_message))
@@ -997,13 +928,13 @@ bind_incdel_to_pre_eval <- function(df_incompletedels, df_all_mutations){
         relocate(gene, mut_id, 2:13)       
     }    
   }
-
   return(full_df_all_mutations)
 }
 #' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom dplyr filter bind_rows mutate select
 bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
+  func_start()
   gene <- 0
   if(is.null(final_output)&is.null(df_incompletedels)){
     full_output <- NULL
@@ -1022,7 +953,14 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
       )       
     }    
   }
+  func_end()
   return(full_output)
+}
+remove_global_vars <- function(){
+  suppressWarnings(
+    rm(call_depth, log_depth, timelist, dg, vb, plg, mat_info, mat_phased, 
+     mat_dist, solved_master_combs, main_muts, main_pos, embedded)
+  )
 }
 set_global_variables <- function(debug, verbose, printLog){
   call_depth <<- 0
@@ -1046,7 +984,6 @@ set_global_variables <- function(debug, verbose, printLog){
 }
 #' @keywords internal
 catt <- function(printLog=FALSE, level, text){
-  
   if(printLog==TRUE){
     message(rep("  ", level), text)
   }
@@ -1055,6 +992,7 @@ increment_loglist <- function(){
   loglist <<- list()
   timelog <<- list()
 }
+#' @importFrom stringr str_replace_all %>%
 append_loglist <- function(...){
   filler <- paste(rep("  ", call_depth), collapse = "")
   appendix <- paste(..., collapse = " ") %>%
@@ -1072,6 +1010,7 @@ add_timestamp <- function(){
 remove_timestamp <- function(){
   timelist <<- timelist[c(1:call_depth)]
 }
+#' @importFrom magrittr %>%
 vm <- function(mes, verbose=FALSE, depth=0){
   if(depth>0){
     to_add <- "|-"

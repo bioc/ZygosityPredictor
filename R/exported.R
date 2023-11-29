@@ -160,8 +160,111 @@ aff_som_copies <- function(chr, af, tcn, purity, sex, c_normal=NULL){
   return(aff_cp)
   ## alternative: aff_cp = af*(tcn+c_normal/purity-c_normal)
 }
+#' predicts zygosity of a set of variants
+#' @param purity purity of the sample (numeric value between 0 and 1 indicating 
+#' the fraction of relevant sample with control/unrelevant tissue)
+#' @param ploidy ploidy of the sample (numeric value)
+#' @param sex sex of the sample (character: "male", "female", "m", "f")
+#' @param somCna GRanges object containing all genomic regions with annotated 
+#' total copynumber and cna_type as metadata columns. The total-copynumber 
+#' column should be named "tcn" but also some other commonly used names. 
+#' It should contain numeric values or characters that can be converted to 
+#' numeric values. The cna_type column must contain the information about 
+#' loss of heterozygosity (LOH). Therefore the term "LOH" must be explicitely 
+#' mentioned in the column. If a genomic region is not present in the object, 
+#' it will be taken as heterozygous with neutral TCN of 2. 
+#' @param somSmallVars GRanges object containing all somatic small 
+#' variants (SNV and INDEL).
+#' Required metadata columns are reference base (ref/REF), 
+#' alternative base (alt/ALT),
+#' annotation of the gene name (gene/GENE) and the allele-frequency (af/AF). 
+#' If the object is not provided the tool assumes there are no somatic small 
+#' variants.
+#' @param germSmallVars GRanges object containing all germline small 
+#' variants (SNV and INDEL).
+#' Required metadata columns are reference base (ref/REF), alternative 
+#' base (alt/ALT),
+#' annotation of the gene name (gene/GENE) and the allele-frequency (af/AF)
+#' If the object is not provided the tool assumes there are no germline small 
+#' variants.
+#' @param geneModel GRanges object containing the gene-annoattion of 
+#' the used reference genome with metadata column of the gene name (gene)
+#' @param includeHomoDel default = TRUE; if FALSE homozygous deleteions are 
+#' excluded
+#' @param includeIncompleteDel default = TRUE; if FALSE heterzygous deleteions 
+#' are excluded
+#' @param assumeSomCnaGaps (logical, default=FALSE) Only required if the somCna
+#' object lacks copy number information for genomic segments on which small 
+#' variants are detected. By default, variants in such regions will be excluded 
+#' from the analysis as required information about the copy number is missing. 
+#' These variants will be attached to the final output list in a separate 
+#' tibble. To include them, this flag must be set TRUE and the ground ploidy 
+#' must be given as an input. This ground ploidy will then be taken as tcn in 
+#' the missing regions. If no ploidy is given the tool will assume the ground 
+#' ploidy of 2 when this flag is TRUE.
+#' @param byTcn logical, default=TRUE; optional if includeHomoDel or 
+#' includeIncompleteDelS is TRUE. If FALSE the tool will not use tcn as a 
+#' criterion to assign large deletions. It will use the cna_type column and 
+#' check for indicating strings like HOMDEL/HomoDel/DEL. Some commonly used 
+#' strings are covered. It is recommended to leave this flag TRUE
+#' @param colnameTcn character indicating the name of the metadata containing 
+#' the tcn information in the somCna object. If not provided the tool tries to 
+#' detect the column according to default names
+#' @param colnameCnaType character indicating the name of the metadata 
+#' containing cna type information in the somCna object. 
+#' If not provided the tool tries to detect the column according to default 
+#' names
+#' @param verbose logical, default=FALSE; prints functions that are called
 #' @importFrom IRanges subsetByOverlaps
 #' @export
+#' @examples 
+#' cnvs  = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr = "chr17",
+#'     start = c(170060, 34520990),
+#'     end = c(34520990, 83198614),
+#'     tcn = c(2, 1),
+#'     cna_type = c("neutral", "LOH")
+#'   )
+#' )
+#' somatic_vars = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr="chr17",
+#'     start = 7675088,
+#'     end = 7675088,
+#'     ref = "C",
+#'     alt = "T",
+#'     af = 0.65,
+#'     gene = "TP53" 
+#'   )
+#' )
+#' germline_vars = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr="chr17",
+#'     start = 41771694,
+#'     end = 41771694,
+#'     ref = "GTGT",
+#'     alt = "G",
+#'     af = 0.95,
+#'     gene = "JUP" 
+#'   )
+#' )
+#' reference = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr = "chr17",
+#'     start = c(7661778, 41754603),
+#'     end = c(7687538, 41786931),
+#'     gene = c("TP53", "JUP")
+#'   )
+#' )
+#' sex = "female"
+#' purity = 0.9
+#' predict_per_variant(purity = purity, sex = sex, 
+#'   somCna = cnvs,
+#'   somSmallVars = somatic_vars,
+#'   germSmallVars = germline_vars,
+#'   geneModel = reference
+#' )
 predict_per_variant <- function(purity, 
                                 sex,
                                 somCna, 
@@ -175,7 +278,6 @@ predict_per_variant <- function(purity,
                                 includeIncompleteDel=TRUE,
                                 assumeSomCnaGaps=FALSE,
                                 byTcn=TRUE,
-                                is_pre_eval=TRUE,
                                 verbose=FALSE
 ){
   status <- info <- wt_cp <- . <- df_homdels <- df_all_mutations <- gene <-
@@ -183,17 +285,18 @@ predict_per_variant <- function(purity,
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
     som_covered <- germ_covered <- final_phasing_info <- 
     combined_snp_phasing <- NULL
-  if(is_pre_eval){
-    call_depth <<- 0 
+  if(!exists("embedded")){
+    is_pre_eval <- TRUE
     set_global_variables(FALSE, verbose, FALSE)
     somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                            assumeSomCnaGaps, colnameTcn, 
                            colnameCnaType, verbose)  
     purity <- check_purity(purity)
     sex <- check_sex(sex)
+  } else {
+    is_pre_eval <- FALSE
   }
-  func_start( verbose)
-  #vm(as.character(sys.call()[1]), verbose, 1)
+  func_start()
   ## check input for valid format
   somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
   germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
@@ -250,7 +353,7 @@ predict_per_variant <- function(purity,
                                                     df_homdels,
                                                     templateGenes, purity)
   }
-  if(is_pre_eval==TRUE){
+  if(is_pre_eval){
     full_eval <- list(evaluation_per_variant= 
                   bind_incdel_to_pre_eval(df_incompletedels, df_all_mutations),
                 combined_uncovered=combined_uncovered
@@ -262,6 +365,9 @@ predict_per_variant <- function(purity,
                 combined_uncovered=combined_uncovered)   
   }
   func_end()
+  if(is_pre_eval){
+    remove_global_vars()
+  }
   return(full_eval)
 }
 #' predicts zygosity of a set of genes of a sample
@@ -335,8 +441,6 @@ predict_per_variant <- function(purity,
 #' exponentially.
 #' @param debug logical, default=FALSE; prints output for debugging
 #' @param verbose logical, default=FALSE; prints functions that are called
-#' @param refGen character, default="hg38; relevant if vcf files are provided
-#' for haploblock or imbalance phasing
 #' @param haploBlocks GRanges object containing haploblocks. Haploblocks are
 #' defined as genomic regions in which SNPs are phased to a specific allele.
 #' For example a haploblock could be chr1:1000-10000. This would mean that every
@@ -349,6 +453,9 @@ predict_per_variant <- function(purity,
 #' @param phasingMode character, default="fast"; if set to full. Even if high 
 #' confidence phasing result could be achieved, following phasing approaches 
 #' will be carried out
+#' @param showReadDetail default = FALSE; if TRUE a table is added to the 
+#' output, containing all used reads/rea-pairs with anntated read classification 
+#' (mut1, mut2, both, none, skipped, dev_var)
 #' 
 #' 
 #' @return A list of dataframes. Those are the evaluation per variant, 
@@ -433,7 +540,6 @@ predict_zygosity <- function(purity,
                              verbose=FALSE,
                              debug=FALSE,
                              logDir=NULL,
-                             refGen="hg19",
                              snpQualityCutOff=1, 
                              phasingMode="fast"
 ){
@@ -446,6 +552,7 @@ predict_zygosity <- function(purity,
     combined_eval_per_gene <- full_phasing_info <- NULL
   ## define global debugging variable
   set_global_variables(debug, verbose, printLog)
+  embedded <<- TRUE
   func_start()
   somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                           assumeSomCnaGaps, colnameTcn, 
@@ -465,7 +572,6 @@ predict_zygosity <- function(purity,
                                                     includeIncompleteDel,
                                                     assumeSomCnaGaps,
                                                     byTcn,
-                                                    is_pre_eval=FALSE,
                                                     verbose)
   evaluation_per_variant <- evaluation_per_variant_pre$evaluation_per_variant
   if(!is.null(evaluation_per_variant)){
@@ -473,9 +579,7 @@ predict_zygosity <- function(purity,
       bamDna <- check_bam(bamDna)
       bamRna <- check_rna(bamRna)
       logDir <- check_logDir(logDir)
-      #print(haploBlocks)
       haploBlocks <- check_haploblocks(haploBlocks)
-      #print(haploBlocks)
       phasedVcf <- check_vcf(vcf)
       per_gene <- lapply(
         unique(evaluation_per_variant$gene), 
@@ -492,7 +596,6 @@ predict_zygosity <- function(purity,
         distCutOff, 
         verbose,
         logDir,
-        refGen,
         somCna,
         snpQualityCutOff, 
         phasingMode)
@@ -522,6 +625,7 @@ predict_zygosity <- function(purity,
       combined_eval_per_gene) %>%
       transform(status=factor(status, 
                               levels=c("all_copies_affected", "wt_copies_left", "undefined")))
+    
   }
   result_list <- list(
     eval_per_variant=evaluation_per_variant,
@@ -534,6 +638,7 @@ predict_zygosity <- function(purity,
     mat_info=comb_mat_info
   ) %>%
     compact()
+  remove_global_vars()
   func_end()
   return(result_list)
 } 

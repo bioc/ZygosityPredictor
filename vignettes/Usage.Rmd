@@ -331,7 +331,7 @@ some of which are of little biological relevance or even SNPs, will inevitably
 reduce the validity of the results.
 
 ```{r, results = FALSE}
-fp = predict_zygosity(
+fp <- predict_zygosity(
   purity = PURITY, 
   ploidy = PLOIDY,
   sex = SEX,
@@ -356,7 +356,7 @@ The result which is returned by the function consists of a list of three
 * Evaluation per variant
 * Evaluation per gene
 * Phasing info
-* Read pair info (only if showReadDetail=TRUE)
+* Read pair info (only if showReadDetail=TRUE and logDir is provided)
 * Variants not covered by somCna (only if present and no sCNA gap assumption 
 was done)
 * detailed information about extended SNP phasing if it was performed
