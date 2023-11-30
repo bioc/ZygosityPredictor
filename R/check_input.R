@@ -4,7 +4,7 @@
 #' @importFrom dplyr case_when
 #' @importFrom GenomicRanges elementMetadata elementMetadata<-
 assign_correct_colnames <- function(obj, type){
-  #vm(as.character(sys.call()[1]), verbose, 1)
+  #vm(as.character(sys.call()[1]), 1)
   . <- NULL
   if(type=="scna"){
     ## define correct tcn column
@@ -178,7 +178,7 @@ check_chr <- function(chr){
 #' @importFrom methods is
 check_somCna <- function(somCna, geneModel, sex, ploidy,
                          assumeSomCnaGaps, colnameTcn, 
-                         colnameCnaType, verbose){
+                         colnameCnaType){
   func_start()
   . <- NULL
   somCna <- general_gr_checks(somCna, "scna", "somCna")

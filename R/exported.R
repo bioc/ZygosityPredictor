@@ -290,7 +290,7 @@ predict_per_variant <- function(purity,
     set_global_variables(FALSE, verbose, FALSE)
     somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                            assumeSomCnaGaps, colnameTcn, 
-                           colnameCnaType, verbose)  
+                           colnameCnaType)  
     purity <- check_purity(purity)
     sex <- check_sex(sex)
   } else {
@@ -330,22 +330,21 @@ predict_per_variant <- function(purity,
                                                          germSmallVars,
                                                          som_covered,
                                                          germ_covered,
-                                                         templateGenes, 
-                                                         verbose)
+                                                         templateGenes)
   ## preapre input data for prediction (pre-evaluation)
   df_germ <- prepare_germline_variants(
     gr_germ_cov, 
-    somCna, purity, sex, verbose)
+    somCna, purity, sex)
   df_som <- prepare_somatic_variant_table(
     gr_som_cov, 
     templateGenes, 
-    somCna, purity, sex, verbose)
+    somCna, purity, sex)
   df_homdels <- extract_all_dels_of_sample(somCna, geneModel, 
                                            "homdel", byTcn, sex, ploidy,
-                                           includeHomoDel, verbose)
+                                           includeHomoDel)
   df_incompletedels <- extract_all_dels_of_sample(somCna, geneModel, 
                                                   "incompletedel", TRUE, sex, 
-                                                  ploidy, includeIncompleteDel, verbose)
+                                                  ploidy, includeIncompleteDel)
   ## predict zygosity for each gene
   if(!is.null(df_germ)|!is.null(df_som)|!is.null(df_homdels)){
     df_all_mutations <- combine_main_variant_tables(df_germ, df_som, 
@@ -553,7 +552,7 @@ predict_zygosity <- function(purity,
   func_start()
   somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                           assumeSomCnaGaps, colnameTcn, 
-                          colnameCnaType, verbose)
+                          colnameCnaType)
   purity <- check_purity(purity)
   sex <- check_sex(sex)
   evaluation_per_variant_pre <- predict_per_variant(purity, 
@@ -568,8 +567,7 @@ predict_zygosity <- function(purity,
                                                     includeHomoDel,
                                                     includeIncompleteDel,
                                                     assumeSomCnaGaps,
-                                                    byTcn,
-                                                    verbose)
+                                                    byTcn)
   evaluation_per_variant <- evaluation_per_variant_pre$evaluation_per_variant
   if(!is.null(evaluation_per_variant)){
     if(!nrow(evaluation_per_variant)==0){
@@ -591,7 +589,6 @@ predict_zygosity <- function(purity,
         haploBlocks,
         phasedVcf,
         distCutOff, 
-        verbose,
         logDir,
         somCna,
         snpQualityCutOff, 

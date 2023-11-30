@@ -314,8 +314,7 @@ aggregate_phasing <- function(all_combs, df_gene, phasing_info){
 #' @importFrom dplyr group_by tally mutate ungroup rowwise pull filter summarize left_join select
 #' @importFrom stats chisq.test
 classify_combination <- function(classified_reads, ref_class1, ref_class2, 
-                                 purity, printLog, 
-                                 verbose=FALSE){
+                                 purity, printLog){
   func_start()
   result <- . <- fac <- NULL
   all_possible_results <- c('both', 'mut1', 'mut2', 'none', 
@@ -442,7 +441,7 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
     subclonal=subclonal,
     unplausible=unplausible
   )
-  func_end(verbose)
+  func_end()
   return(status_table)
 }  
 #' @keywords internal
@@ -451,15 +450,13 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
                                         ref_chr1, 
                                         ref_chr2, 
                                         ref_pos1, 
-                                        ref_pos2, 
-                                        verbose=FALSE){
+                                        ref_pos2){
   func_start()
   dna_bam <- prepare_raw_bam_file(bamDna, 
                                   ref_chr1, 
                                   ref_chr2, 
                                   ref_pos1, 
-                                  ref_pos2,
-                                  verbose) 
+                                  ref_pos2) 
   if(length(dna_bam)!=0){
     dna_bam$origin <- "DNA"
   }
@@ -468,8 +465,7 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
                                     ref_chr1, 
                                     ref_chr2, 
                                     ref_pos1, 
-                                    ref_pos2,
-                                    verbose)
+                                    ref_pos2)
     if(length(rna_bam)==0){
       rna_bam <- NULL
     } else {
@@ -493,15 +489,14 @@ classify_reads <- function(ref_pos1,
                            ref_ref1,
                            ref_ref2,
                            ref_class1,
-                           ref_class2, bamDna, bamRna, verbose){
-  vm(as.character(sys.call()[1]), verbose, 1)
+                           ref_class2, bamDna, bamRna){
+  vm(as.character(sys.call()[1]),  1)
   bam <- check_for_overlapping_reads(bamDna,
                                      bamRna,
                                      ref_chr1,
                                      ref_chr2,
                                      ref_pos1,
-                                     ref_pos2, 
-                                     verbose)
+                                     ref_pos2)
   if(!length(bam)==0){  
     classified_reads <- lapply(unique(bam$qname),
                                core_tool,
@@ -513,19 +508,18 @@ classify_reads <- function(ref_pos1,
                                ref_ref1,
                                ref_ref2,
                                ref_class1,
-                               ref_class2,
-                               verbose) %>%
+                               ref_class2) %>%
       bind_rows() 
   } else {
     classified_reads <- tibble()
   } 
-  func_end(verbose)
+  func_end()
   return(classified_reads)
 }
 #' @importFrom magrittr %>%
 #' @importFrom tibble tibble
 #' @importFrom dplyr mutate
-phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna, verbose, 
+phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna,  
                               geneDir, phasing_type, showReadDetail){
   func_start()
   append_loglist("Phasing:", comb)
@@ -561,7 +555,8 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna, verbose,
                                           ref_ref2,
                                           ref_class1,
                                           ref_class2, 
-                                          bamDna, bamRna, verbose)
+                                          bamDna, 
+                                          bamRna)
   append_loglist(nrow(main_classified_reads), 
                  "reads / read-pairs covering both positions")
   if(nrow(main_classified_reads)!=0){
@@ -573,8 +568,8 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna, verbose,
     classified_main_comb <- classify_combination(main_classified_reads,
                                                  ref_class1, ref_class2,
                                                  purity,
-                                                 printLog,
-                                                 verbose
+                                                 printLog
+                                                 
     ) %>%  
       mutate(
         dist=mat_dist[comb],
@@ -681,7 +676,7 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
 #' @importFrom tibble tibble
 #' @importFrom dplyr  bind_rows
 perform_direct_phasing <- function(mat_gene, bamDna, bamRna, purity, 
-                                   verbose, printLog, showReadDetail, geneDir){
+                                    printLog, showReadDetail, geneDir){
   func_start()
   phasing_type <- "direct"
   phasing_info <- tibble()
@@ -694,7 +689,7 @@ perform_direct_phasing <- function(mat_gene, bamDna, bamRna, purity,
     mat_gene_relcomb <- mat_gene[relcombxy,]
     
     classified_main_comb <- phase_combination(mat_gene_relcomb, comb, bamDna, bamRna, 
-                                              verbose, geneDir, phasing_type, showReadDetail)
+                                               geneDir, phasing_type, showReadDetail)
     phasing_info <- bind_rows(phasing_info,
                               classified_main_comb)
     i <- i+1
@@ -721,12 +716,12 @@ phase <- function(df_gene,
                   vcf=NULL,
                   distCutOff=5000, 
                   printLog=FALSE, 
-                  verbose=FALSE, 
                   logDir=NULL, 
                   showReadDetail=FALSE, 
                   snpQualityCutOff=1, 
-                  phasingMode="full"){
-  vm(as.character(sys.call()[1]), verbose, 1)
+                  phasingMode="full", 
+                  verbose=FALSE){
+  vm(as.character(sys.call()[1]),  1)
   #haploblock_phasing <- NULL
   GENE <- unique(df_gene$gene)
   if(!is.null(logDir)){
@@ -746,13 +741,13 @@ phase <- function(df_gene,
                  "are over distCutOff")
   ## (2): perform direct phasing between variants (read-based)
   direct_phasing <- perform_direct_phasing(mat_gene, bamDna, bamRna, 
-                                           purity, verbose, printLog, 
+                                           purity,  printLog, 
                                            showReadDetail, geneDir)
   phasing_info <- direct_phasing$info
   if(length(unknown_main())>0&!is.null(vcf)){
     append_loglist("unphased combinations left --> Initialize SNP phasing")
     ## missing combinations in main muts --> start secondary phasing approaches
-    lsnps <- load_snps(df_gene, vcf, haploBlocks,  distCutOff, verbose, somCna, snpQualityCutOff)
+    lsnps <- load_snps(df_gene, vcf, haploBlocks,  distCutOff,  somCna, snpQualityCutOff)
     store_log(geneDir, lsnps, "lsnps.tsv")
     if(!is.null(lsnps)){
       snps <- lsnps %>%
@@ -803,7 +798,7 @@ phase <- function(df_gene,
                                  to_phase[2],
                                  nrow(mat_phased))
         classified_main_comb <- phase_combination(mat_gene_relcomb, comb,
-                                                  bamDna, bamRna, verbose, 
+                                                  bamDna, bamRna,  
                                                   geneDir, comb, showReadDetail)
         append_matrices(classified_main_comb)
         phasing_info <- bind_rows(phasing_info,
@@ -888,10 +883,10 @@ make_both_annotations <- function(region_to_load_in){
 #' @importFrom purrr compact
 #' @importFrom VariantAnnotation readVcf geno info
 #' @importFrom Rsamtools seqnamesTabix TabixFile
-loadVcf <- function(vcf_in, chrom, region_to_load_in, verbose, somCna,which="all",
+loadVcf <- function(vcf_in, chrom, region_to_load_in,  somCna,which="all",
                     colname_gt="GT", colname_af="AF", colname_dp4="DP4", 
                     dkfz=FALSE){
-  func_start(verbose)
+  func_start()
   ## first check which format input vcf has
   region_to_load <- region_to_load_in
   chr_anno <- as_tibble(region_to_load_in) %>%
@@ -970,7 +965,7 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in, verbose, somCna,which="all
   } else {
     filtered_vcf <- final_vcf
   }
-  func_end(verbose)
+  func_end()
   return(filtered_vcf)
 }
 #' @importFrom dplyr case_when
@@ -984,7 +979,7 @@ get_string_status <- function(nstatus){
 #' @importFrom GenomicRanges GRanges
 #' @importFrom dplyr filter select mutate left_join
 #' @importFrom tibble as_tibble
-load_snps <- function(df_gene, vcf, haploBlocks, distCutOff, verbose, somCna, 
+load_snps <- function(df_gene, vcf, haploBlocks, distCutOff,  somCna, 
                       snpQualityCutOff, which="all"){
   func_start()
   region_to_load <- paste0(unique(df_gene$chr), ":", min(df_gene$pos)-distCutOff,
@@ -992,7 +987,7 @@ load_snps <- function(df_gene, vcf, haploBlocks, distCutOff, verbose, somCna,
     GRanges()  %>%
     split_genomic_range(.,df_gene$pos)
   loaded_vcf_hz <- loadVcf(vcf, unique(df_gene$chr), region_to_load,  
-                           verbose, somCna)
+                            somCna)
   if(length(loaded_vcf_hz)>0){
     fsnps <- loaded_vcf_hz %>% as_tibble() %>%
       filter(!is.na(QUAL)&QUAL>snpQualityCutOff) %>%
@@ -1319,9 +1314,8 @@ core_tool <- function(qname, bam,
                       ref_pos1, ref_pos2,
                       ref_alt1, ref_alt2,
                       ref_ref1, ref_ref2,
-                      ref_class1, ref_class2,
-                      verbose=FALSE, version="old"){
-  #vm("core_tool", verbose, 1)
+                      ref_class1, ref_class2, version="old"){
+  #vm("core_tool",  1)
   . <- NULL
   ## parse read according to cigar string
   parsed_read <- parse_cigar(bam, qname)

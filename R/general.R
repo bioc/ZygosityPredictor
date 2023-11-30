@@ -1,21 +1,9 @@
-func_end <- function(verbose=NULL){
-  mes <- "end"
-  if(!is.null(verbose)){
-    vm(mes, verbose, -1)
-  } else {
-    vm(mes, vb, -1)
-  }
+func_end <- function(){
+  vm("end", -1)
 }
-func_start <- function(verbose=NULL){
-  #vm(as.character(sys[1]), verbose, 1)
+func_start <- function(){
   mes <- paste0(as.character(sys.call(-1)[1]))
-  if(!is.null(verbose)){
-    vm(mes, 
-       verbose, 1)
-  } else {
-    vm(mes, vb, 1)
-  }
-  
+  vm(mes, 1)
 }
 increment_log_depth <- function() {
   log_depth <<- log_depth + 1
@@ -46,9 +34,8 @@ store_log <- function(geneDir, obj, file){
 #' @importFrom Rsamtools ScanBamParam
 #' @importFrom IRanges subsetByOverlaps
 #' @importFrom dplyr tibble
-prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2, 
-                                 verbose=FALSE){
-  func_start(verbose)
+prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2){
+  func_start()
   qname.first <- . <- NULL
   ## importFrom dplyr tibble filter
   ref_pos1 <- as.numeric(pos1)
@@ -72,7 +59,7 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
   ref_gr2 <- GRanges(seqnames = ref_chr2, 
                                    ranges = ref_pos2)
   ## now load all reads/read-pairs that cover the position of the first variant
-  #vm("loading reads", verbose, 1)
+  #vm("loading reads", 1)
   all_covering_read_pairs <- readGAlignmentPairs(
     bamDna,
     param=ScanBamParam(
@@ -102,7 +89,7 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
     ]
     
   }
-  func_end(verbose)
+  func_end()
   return(filtered_reads)
 }
 #' @keywords internal
@@ -111,7 +98,7 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2,
 #' @importFrom purrr compact
 #' @importFrom dplyr summarize pull
 insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
-  vm(as.character(sys.call()[1]), verbose, 1)
+  vm(as.character(sys.call()[1]), 1)
   seqnames <- start <- end <- tcn <- . <- NULL
   if(sex=="male"){
     allowed_chr <- allowed_inputs("chrom_names")
@@ -175,7 +162,7 @@ insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
     }
   })
   comb_somCna <- Reduce(function(x,y)c(x,y),new_somCna)
-  func_end(verbose)
+  func_end()
   return(comb_somCna)
 }
 
@@ -183,8 +170,8 @@ insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
 #' @importFrom IRanges mergeByOverlaps
 #' @importFrom dplyr mutate select mutate_at rowwise
 #' @importFrom stringr str_detect
-merge_sCNAs <- function(obj, somCna, verbose){
-  func_start(verbose)
+merge_sCNAs <- function(obj, somCna){
+  func_start()
   alt <- af <- tcn <- tcn_assumed <- cna_type <- gene <- ref <- NULL
   merged <- obj %>%
     mergeByOverlaps(somCna) %>% as_tibble() %>%
@@ -193,7 +180,7 @@ merge_sCNAs <- function(obj, somCna, verbose){
            tcn_assumed) %>%
     mutate_at(.vars = c("af", "tcn"), .funs=as.numeric) %>%
     rowwise() #%>%
-  func_end(verbose)
+  func_end()
   return(merged)
 }
 #' @keywords internal
@@ -203,8 +190,8 @@ merge_sCNAs <- function(obj, somCna, verbose){
 #' @importFrom IRanges mergeByOverlaps
 #' @importFrom dplyr mutate filter
 prepare_somatic_variant_table <- function(somSmallVars, templateGenes, 
-                                          somCna, purity, sex, verbose){
-  func_start(verbose)
+                                          somCna, purity, sex){
+  func_start()
   cna_type <- gene <- ref <- alt <- af <- tcn <- cna_type <- chr <- 
     aff_cp <- wt_cp <- . <- tcn_assumed <- NULL
   if(!is.null(somSmallVars)){
@@ -212,7 +199,7 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
       somSmallVars[which(somSmallVars$gene %in% templateGenes)]
     if(length(reduced_to_templateGenes)>0){
       tbl_prepared_variants <- reduced_to_templateGenes %>%
-        merge_sCNAs(., somCna, verbose) %>%
+        merge_sCNAs(., somCna) %>%
         
         ################################
         mutate(
@@ -252,7 +239,7 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
   } else {
     tbl_prepared_variants <- NULL
   }
-  func_end(verbose)
+  func_end()
   return(tbl_prepared_variants)
 }
 #' @keywords internal
@@ -263,9 +250,8 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
 #' @importFrom purrr compact
 #' @importFrom dplyr filter as_tibble select bind_rows mutate
 extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE, 
-                                       byTcn, sex, ploidy, include_dels, 
-                                       verbose){
-  func_start(verbose)
+                                       byTcn, sex, ploidy, include_dels){
+  func_start()
   tcn <- cna_type <- seqnames <- gene <- . <- NULL
   if(include_dels==TRUE){
     TBL_CNV <- somCna %>%
@@ -344,23 +330,22 @@ extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE,
     #return(NULL)
     full_CNAs <- NULL
   }
-  func_end(verbose)
+  func_end()
   return(full_CNAs)
 }
 #' @keywords internal
 #' description follows
 #' @importFrom stringr %>%
 #' @importFrom dplyr mutate select
-prepare_germline_variants <- function(germSmallVars, somCna, purity, sex, 
-                                      verbose){
+prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
   cna_type <- gene <- ref <- alt <- af <- tcn <- cna_type <- chr <- aff_cp <- 
     origin <- pos <- wt_cp <- pre_info <- . <- tcn_assumed <- NULL
-  func_start(verbose)
+  func_start()
   if(is.null(germSmallVars)){
     df_germ <- NULL
   } else {
     df_germ <- germSmallVars %>% 
-      merge_sCNAs(., somCna, verbose) %>%
+      merge_sCNAs(., somCna) %>%
       mutate(
         origin="germline",
         class=define_class(ref, alt),
@@ -400,7 +385,7 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex,
              vn_status
       ) 
   }
-  func_end(verbose)
+  func_end()
   return(df_germ)
 }
 
@@ -486,7 +471,7 @@ find_unplaus_issues <- function(unplaus){
 }
 #' @importFrom dplyr arrange case_when desc mutate pull select
 #' @importFrom stringr %>% str_detect 
-eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
+eval_phasing_new <- function(all_comb, df_gene, printLog){
   func_start()
   rare_case <- ""
   most_relevant_comb <- all_comb %>%
@@ -628,7 +613,7 @@ eval_phasing_new <- function(all_comb, df_gene, printLog, verbose){
 #' desicion tree if one variant already affects all copies in pre evaluation
 #' @importFrom dplyr mutate select filter
 #' @importFrom stringr str_detect
-eval_one_mut_affects_all <- function(df_gene, printLog, verbose){
+eval_one_mut_affects_all <- function(df_gene, printLog){
   func_start()
   concern_info <- df_gene %>% 
     filter(vn_status==2) %>%
@@ -646,8 +631,8 @@ eval_one_mut_affects_all <- function(df_gene, printLog, verbose){
 #' @keywords internal
 #' if no variant affecta all copies
 #' @importFrom dplyr mutate select
-eval_one_mut <- function(df_gene, printLog, verbose){
-  func_start(verbose)
+eval_one_mut <- function(df_gene, printLog){
+  func_start()
   concern_info <- df_gene %>%
     mutate(n_mut=1,
            conf=1,
@@ -658,11 +643,11 @@ eval_one_mut <- function(df_gene, printLog, verbose){
            eval_by) %>%
     mutate(warning=NA, wt_cp_range=NA, phasing=NA)
   append_loglist(concern_info$info)
-  func_end(verbose)
+  func_end()
   return(concern_info)
 }
-eval_lost_in_tumor <- function(df_gene, printLog, verbose){
-  func_start(verbose)
+eval_lost_in_tumor <- function(df_gene, printLog){
+  func_start()
   concern_info <- df_gene %>%
     mutate(n_mut=1,
            conf=1,
@@ -674,12 +659,12 @@ eval_lost_in_tumor <- function(df_gene, printLog, verbose){
            eval_by) %>%
     mutate(warning="variant lost in tumor", wt_cp_range=NA, phasing=NA)
   append_loglist(concern_info$info)
-  func_end(verbose)
+  func_end()
   return(concern_info)
 }
 #' @importFrom dplyr mutate select filter left_join bind_rows
-remove_duplicated_variants <- function(df_gene_raw, verbose){
-  vm(as.character(sys.call()[1]), verbose, 1)
+remove_duplicated_variants <- function(df_gene_raw){
+  vm(as.character(sys.call()[1]), 1)
   n_vars_per_pos <- df_gene_raw %>%
     group_by(chr, pos) %>%
     tally() %>%
@@ -715,7 +700,7 @@ remove_duplicated_variants <- function(df_gene_raw, verbose){
   } else {
     df_gene <- df_gene_raw
   }
-  func_end(verbose)
+  func_end()
   return(df_gene)
 }
 #' @keywords internal
@@ -733,13 +718,12 @@ predict_zygosity_genewise <- function(GENE,
                                       haploBlocks,
                                       vcf, 
                                       distCutOff, 
-                                      verbose, 
                                       logDir, 
                                       somCna, 
                                       snpQualityCutOff, 
                                       phasingMode){
-  #func_start(verbose)
-  vm("predict_zygosity_genewise", verbose, 1) ## do not replcae!!!
+  #func_start()
+  vm("predict_zygosity_genewise", 1) ## do not replcae!!!
   start_gene_eval <- Sys.time()
   increment_loglist()
   append_loglist(GENE)
@@ -751,25 +735,22 @@ predict_zygosity_genewise <- function(GENE,
   ## all germline variants which are lost in the tumor are excluded, 
   ## vn_status = -1
   ## check if variants at the same position are present
-  df_gene_raw <- remove_duplicated_variants(pre_df_gene, verbose)
+  df_gene_raw <- remove_duplicated_variants(pre_df_gene)
   df_gene <- df_gene_raw %>%
     filter(vn_status>=0)
   ## check if variants remain in that gene
   if(nrow(df_gene)==0){
-    eval_for_gene <- eval_lost_in_tumor(df_gene_raw, printLog, 
-                                  verbose)
+    eval_for_gene <- eval_lost_in_tumor(df_gene_raw, printLog)
    #print(eval_for_gene)
       ## all variants lost in tumor
       append_loglist("all variants lost in tumor")
   } else if(any(df_gene$vn_status==2)){
       append_loglist("one of", nrow(df_gene), "variants affects all copies")
-      eval_for_gene <- eval_one_mut_affects_all(df_gene, printLog, 
-                                                verbose)
+      eval_for_gene <- eval_one_mut_affects_all(df_gene, printLog)
     ## (2): if only one variant is present  
   } else if(nrow(df_gene)==1){
       append_loglist("one variant that does ot affect all copies")
-      eval_for_gene <- eval_one_mut(df_gene, printLog, 
-                                    verbose)
+      eval_for_gene <- eval_one_mut(df_gene, printLog)
     ## (3): more than one variant present in gene   
   } else {  
       append_loglist(nrow(df_gene),
@@ -779,12 +760,12 @@ predict_zygosity_genewise <- function(GENE,
       ## second one indirect phasing combinations
       full_phasing_result <- phase(df_gene, somCna, bamDna, purity, sex, bamRna, 
                                    haploBlocks, vcf, distCutOff, printLog,
-                                   verbose, logDir, showReadDetail, 
+                                    logDir, showReadDetail, 
                                    snpQualityCutOff, phasingMode)
       all_comb <- full_phasing_result[[1]] %>%
         mutate(gene=GENE)
       eval_for_gene <- eval_phasing_new(all_comb, df_gene,  
-                                    printLog, verbose)
+                                    printLog)
       phasing_info <- full_phasing_result[[2]] %>%
         mutate(gene=GENE)
       
@@ -811,7 +792,7 @@ predict_zygosity_genewise <- function(GENE,
                                mat_info_gene)
                           )
   log_message <- unlist(loglist) %>% paste(collapse = "\n")
-  func_end(verbose)
+  func_end()
   return(append(zygosity_gene, log_message))
 }
 #' @keywords internal
@@ -852,7 +833,7 @@ define_class <- function(ref, alt){
 #' @importFrom dplyr as_tibble filter select mutate mutate_all
 combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
                                              som_covered, germ_covered,
-                                             templateGenes, verbose){
+                                             templateGenes){
   func_start()
   mid <- seqnames <- start <- ref <- alt <- gene <- uncovered_som <- 
     uncovered_germ <- NULL
@@ -1015,14 +996,14 @@ remove_timestamp <- function(){
   timelist <<- timelist[c(1:call_depth)]
 }
 #' @importFrom magrittr %>%
-vm <- function(mes, verbose=FALSE, depth=0){
+vm <- function(mes, depth=0){
   if(depth>0){
     to_add <- "|-"
   }  
   if(depth<0){
     to_add <- "+-"
   }
-  if(verbose==TRUE){
+  if(vb==TRUE){
     to_print <- paste0(paste(rep("| ", call_depth),collapse=""), to_add,mes)
   } 
   if(depth>0){
@@ -1036,7 +1017,7 @@ vm <- function(mes, verbose=FALSE, depth=0){
     decrement_call_depth()
     remove_timestamp()
   }
-  if(verbose==TRUE){
+  if(vb==TRUE){
     message(to_print, timestamp)
   }
 }
