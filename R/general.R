@@ -722,11 +722,20 @@ remove_duplicated_variants <- function(df_gene_raw, verbose){
 #' description follows
 #' @importFrom stringr %>%
 #' @importFrom dplyr filter mutate as_tibble case_when
-predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna, 
-                                      bamRna, showReadDetail,
-                                      printLog, purity, sex, haploBlocks,
-                                      phasedVcf, distCutOff, 
-                                      verbose, logDir, somCna, 
+predict_zygosity_genewise <- function(GENE, 
+                                      evaluation_per_variant, 
+                                      bamDna, 
+                                      bamRna, 
+                                      showReadDetail,
+                                      printLog, 
+                                      purity, 
+                                      sex, 
+                                      haploBlocks,
+                                      vcf, 
+                                      distCutOff, 
+                                      verbose, 
+                                      logDir, 
+                                      somCna, 
                                       snpQualityCutOff, 
                                       phasingMode){
   #func_start(verbose)
@@ -738,8 +747,7 @@ predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna,
     score <- comb <- dist <- tcn <- info <- n <- all_comb <- phasing_info <- mat_phased_gene <- 
   mat_info_gene <- NULL 
   #start_gene_eval <- Sys.time()
-  pre_df_gene <- evaluation_per_variant %>% filter(gene==GENE)    
-  
+  pre_df_gene <- evaluation_per_variant %>% filter(gene==GENE)
   ## all germline variants which are lost in the tumor are excluded, 
   ## vn_status = -1
   ## check if variants at the same position are present
@@ -769,11 +777,10 @@ predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna,
       #print(haploBlocks)
       ## returns two tibbles: first one direct phasing combinations
       ## second one indirect phasing combinations
-      full_phasing_result <- phase(df_gene, bamDna, bamRna, showReadDetail,
-                        purity, sex, haploBlocks, phasedVcf,
-                        distCutOff, printLog, verbose, logDir, somCna, 
-                        snpQualityCutOff, 
-                        phasingMode)
+      full_phasing_result <- phase(df_gene, somCna, bamDna, purity, sex, bamRna, 
+                                   haploBlocks, vcf, distCutOff, printLog,
+                                   verbose, logDir, showReadDetail, 
+                                   snpQualityCutOff, phasingMode)
       all_comb <- full_phasing_result[[1]] %>%
         mutate(gene=GENE)
       eval_for_gene <- eval_phasing_new(all_comb, df_gene,  
@@ -786,7 +793,6 @@ predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna,
       mat_phased_gene[[GENE]] <- full_phasing_result[[3]]
       mat_info_gene[[GENE]] <- full_phasing_result[[4]]
   } 
-    #print(eval_for_gene)
   end_gene_eval <- Sys.time()
   df_reduced <- eval_for_gene %>% as_tibble() %>%
       mutate(
@@ -804,7 +810,6 @@ predict_zygosity_genewise <- function(GENE, evaluation_per_variant, bamDna,
                                mat_phased_gene,
                                mat_info_gene)
                           )
- #print(zygosity_gene) 
   log_message <- unlist(loglist) %>% paste(collapse = "\n")
   func_end(verbose)
   return(append(zygosity_gene, log_message))
@@ -848,7 +853,7 @@ define_class <- function(ref, alt){
 combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
                                              som_covered, germ_covered,
                                              templateGenes, verbose){
-  func_start(verbose)
+  func_start()
   mid <- seqnames <- start <- ref <- alt <- gene <- uncovered_som <- 
     uncovered_germ <- NULL
   if(!is.null(somSmallVars)){
@@ -865,14 +870,13 @@ combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
       mutate(origin="germline") %>%
       mutate_all(.funs = as.character)
   }
-  
   if(nrow(bind_rows(uncovered_som, uncovered_germ))==0){
     combined_uncovered <- NULL
   } else {
     combined_uncovered <- bind_rows(uncovered_som, uncovered_germ) %>%
       filter(gene %in% templateGenes)
   }
-  func_end(verbose)
+  func_end()
   return(combined_uncovered)
 }
 #' @keywords internal
@@ -897,7 +901,7 @@ combine_main_variant_tables <- function(df_germ, df_som, df_homdels,
       abs(nrow(df_all_mutations_unfiltered)-nrow(df_all_mutations)),
       "variants in genes not found in reference genome annotation",
       "(geneModel). They are removed from the analysis.",
-      "Please provide a annotation that contains every gene from the",
+      "Please provide an annotation that contains every gene from the",
       "variant inputs"
     )
   }

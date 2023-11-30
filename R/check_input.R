@@ -57,16 +57,11 @@ assign_correct_colnames <- function(obj, type){
         elementMetadata(obj)[,col_genotype]
     } else {
       ## if not yet there, calculate it for segments where it is possible
-      # obj$all_imb <- case_when(
-      #   obj$LOH==FALSE&round(as.numeric(obj$tcn))%%2!=0&as.numeric(obj$tcn)>=2.5 ~ TRUE,
-      #   TRUE ~ FALSE
-      # )
       obj$gt_cna <- case_when(
         round(obj$tcn)==3 ~ "1:2",
         TRUE ~ NA
       )
     }
-    
   } else {
     col_gene <- str_match(
       nm_md(obj), 
@@ -94,7 +89,6 @@ assign_correct_colnames <- function(obj, type){
         seq_len(length(obj))    
     }    
   }
-  #vm("  - done", verbose, -1)
   return(obj)
 }
 #' @keywords internal
@@ -177,7 +171,6 @@ check_chr <- function(chr){
          "1 and 23 or X or Y, or in the chr1 format")
   }
 }
-
 #' @keywords internal
 #' description follows
 #' @importFrom stringr %>% str_detect
@@ -247,7 +240,6 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
   func_end()
   return(new_somCna)
 }
-
 #' @keywords internal
 #' description follows
 check_name_presence <- function(obj, type){
@@ -261,12 +253,9 @@ check_name_presence <- function(obj, type){
     } else {
       return(FALSE)
     } 
-  #} else if(type=="haploBlocks"){
-    
   } else {
     if(
-      (  
-        any(allowed_inputs("colnames_gene") %in% nm_md(obj))&
+      (any(allowed_inputs("colnames_gene") %in% nm_md(obj))&
         (type=="gene_model"|
          (
            any(allowed_inputs("colnames_af") %in% nm_md(obj))&
@@ -320,7 +309,6 @@ general_gr_checks <- function(obj, type, lab){
     return(assign_correct_colnames(obj, type))
   }
 }
-
 #' @keywords internal
 #' description follows
 check_gr_gene_model <- function(geneModel, is_pre_eval){

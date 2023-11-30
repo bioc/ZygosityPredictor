@@ -47,21 +47,17 @@ add_snps_to_matrices <- function(snps){
     if(nrow(snps_in_hap)>1){
       ## at least two snps in haploblock required to draw any concludios
       res_list <- list()
-      #print(snps_in_hap)
       for (i in 1:(nrow(snps_in_hap)-1)) {
         result_matrix <- matrix(0, nrow = nrow(snps_in_hap)-i, ncol = 2)
         for (j in (i+1):nrow(snps_in_hap)) {
-          #message(i, " - ", j)
           comparison_result <- ifelse(snps_in_hap$gt[i] == snps_in_hap$gt[j], 1, 2)
           # Store the results in the result_matrix
           result_matrix[nrow(snps_in_hap)-j+1, 1] <- get_single_index(snps_in_hap$id[j], snps_in_hap$id[i], nrow(mat_phased))
           result_matrix[nrow(snps_in_hap)-j+1, 2] <- comparison_result
-          
         }
         res_list[[i]] <- result_matrix
       }
-      
-      to_add <- Reduce(function(x,y)rbind(x,y),res_list) #%>% t() %>%
+      to_add <- Reduce(function(x,y)rbind(x,y),res_list)
       colnames(to_add) <- c("comb", "nstatus") 
       new <- to_add %>%
         as_tibble() %>%
@@ -84,6 +80,9 @@ eval_rare_case <- function(all_comb){
       .[which(.>=2)]
     if(length(mut_occurence)>=3){
       rare_case <- " rare_case_detected"
+      
+      
+      
     } else {
       rare_case <- ""
     }
@@ -146,7 +145,6 @@ get_next_path <- function(comb, distCutOff){
         }
   if(length(intersect(as.numeric(mains), 
                       c(connections$mut_id1, connections$mut_id2)))==2){
- 
     graph <- graph_from_data_frame(connections, directed = FALSE)
     all_paths <- igraph::all_shortest_paths(graph, from = mains[1], to = mains[2], mode = "all")$res  
     if(length(all_paths)>0){
@@ -170,11 +168,12 @@ get_next_path <- function(comb, distCutOff){
   } else {
     np <- NULL
   }
-      
-      
-func_end()
-return(np)
+  func_end()
+  return(np)
 }
+#' @importFrom purrr set_names
+#' @importFrom stringr %>%
+#' @importFrom dplyr left_join
 prioritize_combination <- function(){
   func_start()
   unrel_rows <- rownames(mat_phased) %>% .[which(!. %in% colnames(mat_phased))]
@@ -191,7 +190,6 @@ prioritize_combination <- function(){
   )
   ## pick first one, if two have the same distance
   if(length(shortest)==0){
-    #stop("stop_here")
     main_mut_conns <- get_main_mut_conns()
     df_mmc <- tibble(m=names(main_mut_conns),
                      n=main_mut_conns)
@@ -219,7 +217,7 @@ prioritize_combination <- function(){
       } else {
         next_comb <- NULL
       }      
-    }else {
+    } else {
       next_comb <- NULL
     }
   } else {
@@ -240,7 +238,6 @@ aggregate_phasing <- function(all_combs, df_gene, phasing_info){
     df_gene_relcomb <- df_gene %>%
         filter(mut_id %in% comb_vec)
     min_tcn=min(df_gene_relcomb$tcn)
-    
     nstatus <- mat_phased[mmp]
     status <- get_string_status(nstatus)      
     min_poss_wt_cp=calc_left_wt_copies(min_tcn,
@@ -297,14 +294,17 @@ aggregate_phasing <- function(all_combs, df_gene, phasing_info){
       )
     }
     phasing_status <- tibble(comb=comb, nstatus=nstatus, status=status, 
-                             phasing=phasing, via=via, conf=conf, unplausible=unplausible,
-                             subclonal=subclonal, wt_cp=wt_cp, min_poss_wt_cp=min_poss_wt_cp,
+                             phasing=phasing, via=via, conf=conf, 
+                             unplausible=unplausible,
+                             subclonal=subclonal, wt_cp=wt_cp, 
+                             min_poss_wt_cp=min_poss_wt_cp,
                              max_poss_wt_cp=max_poss_wt_cp,
                              score=score)
     return(phasing_status)
   }) %>%
     bind_rows()  %>%
-    select(comb, nstatus, status, phasing, via, conf, unplausible, subclonal, wt_cp, min_poss_wt_cp, max_poss_wt_cp, score)
+    select(comb, nstatus, status, phasing, via, conf, unplausible, subclonal, 
+           wt_cp, min_poss_wt_cp, max_poss_wt_cp, score)
   func_end()
   return(phasing_all_combs)
 }
@@ -355,11 +355,9 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
     group_by(fac, .drop = FALSE) %>%
     summarize(n=length(fac),
               prob_sum=sum(p_result))
-  
   relevant_for_decision <- cr_conf %>%
     filter(fac %in% c("both","mut1", "mut2")) %>%
     select(fac, prob_sum)
-  
   both <- relevant_for_decision %>%
     filter(fac=="both") %>%
     pull(prob_sum)
@@ -369,16 +367,13 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
   mut2 <- relevant_for_decision %>%
     filter(fac=="mut2") %>%
     pull(prob_sum)
-  
   append_loglist(print_tibble(relevant_for_decision))
-  
   ## predefine null result if no evidence
   status <- "null"
   p <- 1
-   xsq_same <- xsq_diff <- p_diff <- p_same <- v_same <- v_diff <- NA
+  xsq_same <- xsq_diff <- p_diff <- p_same <- v_same <- v_diff <- NA
   nstatus <- evidence <- certainty <- confidence <- conf_log <- 0
   subclonal <- unplausible <- FALSE
-  
   ## get total number of relevant classifications
   sum_rel <- sum(relevant_for_decision$prob_sum)
   if(sum_rel==0){
@@ -406,7 +401,6 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
     ## calculate cramers V... as we have always 2x3 table, m=1
     v_diff <- sqrt(xsq_diff/sum(sum_rel, exp_diff$exp))
     v_same <- sqrt(xsq_same/sum(sum_rel, exp_same$exp))
-    
     if(p_diff>p_same){
       status <- "diff"
       nstatus <- 2
@@ -427,7 +421,6 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
     warning("unplausible phasing result!")
     unplausible <- TRUE
   }
-  
   status_table <- tibble(
     both=both,
     mut1=mut1,  
@@ -718,19 +711,19 @@ perform_direct_phasing <- function(mat_gene, bamDna, bamRna, purity,
 #' @importFrom stringr str_split str_detect
 #' @importFrom dplyr case_when bind_rows mutate rowwise ungroup
 #' @importFrom tibble as_tibble
-phase <- function(df_gene, 
+phase <- function(df_gene,
+                  somCna,  
                   bamDna, 
-                  bamRna, 
-                  showReadDetail=FALSE, 
                   purity, 
                   sex, 
+                  bamRna=NULL, 
                   haploBlocks=NULL, 
-                  phasedVcf=NULL,
+                  vcf=NULL,
                   distCutOff=5000, 
                   printLog=FALSE, 
                   verbose=FALSE, 
                   logDir=NULL, 
-                  somCna, 
+                  showReadDetail=FALSE, 
                   snpQualityCutOff=1, 
                   phasingMode="full"){
   vm(as.character(sys.call()[1]), verbose, 1)
@@ -747,10 +740,7 @@ phase <- function(df_gene,
   solved_master_combs <<- list()
   mat_gene <- as.matrix(df_gene)
   rownames(mat_gene) <- mat_gene[,"mut_id"]
-  
   unphased <- unphased_main()
-  
-  
   append_loglist(length(unphased), "main combinations to phase,", 
                  abs(length(unphased)-length(mat_phased[upper.tri(mat_phased)])), 
                  "are over distCutOff")
@@ -759,10 +749,10 @@ phase <- function(df_gene,
                                            purity, verbose, printLog, 
                                            showReadDetail, geneDir)
   phasing_info <- direct_phasing$info
-  if(length(unknown_main())>0&!is.null(phasedVcf)){
+  if(length(unknown_main())>0&!is.null(vcf)){
     append_loglist("unphased combinations left --> Initialize SNP phasing")
     ## missing combinations in main muts --> start secondary phasing approaches
-    lsnps <- load_snps(df_gene, phasedVcf, haploBlocks,  distCutOff, verbose, somCna, snpQualityCutOff)
+    lsnps <- load_snps(df_gene, vcf, haploBlocks,  distCutOff, verbose, somCna, snpQualityCutOff)
     store_log(geneDir, lsnps, "lsnps.tsv")
     if(!is.null(lsnps)){
       snps <- lsnps %>%
@@ -812,7 +802,6 @@ phase <- function(df_gene,
         comb <- get_single_index(to_phase[1],
                                  to_phase[2],
                                  nrow(mat_phased))
-
         classified_main_comb <- phase_combination(mat_gene_relcomb, comb,
                                                   bamDna, bamRna, verbose, 
                                                   geneDir, comb, showReadDetail)
@@ -828,8 +817,6 @@ phase <- function(df_gene,
   }
   ## secondary phasing done
   append_loglist("finalizing phasing results")
-
-
   ## reconstruct phasing results
   main_pos <- get_main_mut_pos()
   uppertri <- which(upper.tri(mat_phased))
@@ -845,17 +832,17 @@ phase <- function(df_gene,
              comb=paste(
                sort(
                  factor(
-                  c(colnames(mat_phased)[get_xy_index(ncomb, nrow(mat_phased))["x"]], 
-                     rownames(mat_phased)[get_xy_index(ncomb, nrow(mat_phased))["y"]]),
+                  c(colnames(mat_phased)[get_xy_index(ncomb, 
+                                                      nrow(mat_phased))["x"]], 
+                     rownames(mat_phased)[get_xy_index(ncomb, 
+                                                       nrow(mat_phased))["y"]]),
                   levels=c(paste0("m", seq(1,100,1)),
                            paste0("s", seq(1,2000,1)))
                  )
                ),
                collapse="-"
                ))   
- }
-
-  
+  }
   store_log(geneDir, as_tibble(mat_phased), "mat_phased.tsv")
   store_log(geneDir, as_tibble(mat_info), "mat_info.tsv")
   store_log(geneDir, phasing_info, "all_phasing_combinations.tsv")
@@ -905,30 +892,19 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in, verbose, somCna,which="all
                     colname_gt="GT", colname_af="AF", colname_dp4="DP4", 
                     dkfz=FALSE){
   func_start(verbose)
- 
   ## first check which format input vcf has
-  #region_to_load <- make_both_annotations(region_to_load_in)
   region_to_load <- region_to_load_in
-  #print(region_to_load)
   chr_anno <- as_tibble(region_to_load_in) %>%
     pull(seqnames) %>% .[1] %>% str_detect("chr")
   sec_chrom <- ifelse(chr_anno, str_replace(chrom, "chr", ""), 
                       paste0("chr", chrom))
   gr_list <- lapply(vcf_in, function(VCF){
-    #print(VCF)
     if(is(VCF, "TabixFile")){
-      #print("is tabix")
-      #print(chrom)
-      #print(Rsamtools::seqnamesTabix(VCF))
-      #if(length(intersect(c(chrom, sec_chrom), Rsamtools::seqnamesTabix(VCF)))>0){
       if(chrom %in% Rsamtools::seqnamesTabix(VCF)){
-        #print("chrom in seqnames")
         loadedVcf <- 
           readVcf(VCF, 
                   param=region_to_load)
         combVcf <- rowRanges(loadedVcf) 
-        #print(1111111111)
-        #print(combVcf)
         if(length(combVcf)>0){
           combVcf$ALT <- unlist(lapply(combVcf$ALT, 
                                        function(x){as.character(x[[1]][1])}))
@@ -953,14 +929,12 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in, verbose, somCna,which="all
                                 unlist(str_replace(chrom, "chr", "")), 
                                 "[^0-9]"))){
         message("loading")
-        #print(VCF)
         loadedVcf <- VariantAnnotation::readVcf(VCF)
         gt <- VariantAnnotation::geno(loadedVcf)[[colname_gt]] %>% 
           as.character()
         af <- VariantAnnotation::info(loadedVcf)[[colname_af]] 
         dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]]
         rangesVcf <- rowRanges(loadedVcf) 
-       #print(rangesVcf)
         rangesVcf$gt <- gt
         rangesVcf$af <- af
         rangesVcf$dp4 <- dp4
@@ -1010,39 +984,31 @@ get_string_status <- function(nstatus){
 #' @importFrom GenomicRanges GRanges
 #' @importFrom dplyr filter select mutate left_join
 #' @importFrom tibble as_tibble
-load_snps <- function(df_gene, phasedVcf, haploBlocks, distCutOff, verbose, somCna, snpQualityCutOff, which="all"){
+load_snps <- function(df_gene, vcf, haploBlocks, distCutOff, verbose, somCna, 
+                      snpQualityCutOff, which="all"){
   func_start()
   region_to_load <- paste0(unique(df_gene$chr), ":", min(df_gene$pos)-distCutOff,
                            "-", max(df_gene$pos)+distCutOff) %>%
     GRanges()  %>%
     split_genomic_range(.,df_gene$pos)
-  
-  loaded_vcf_hz <- loadVcf(phasedVcf, unique(df_gene$chr), region_to_load,  
+  loaded_vcf_hz <- loadVcf(vcf, unique(df_gene$chr), region_to_load,  
                            verbose, somCna)
   if(length(loaded_vcf_hz)>0){
     fsnps <- loaded_vcf_hz %>% as_tibble() %>%
       filter(!is.na(QUAL)&QUAL>snpQualityCutOff) %>%
       filter(gt %in% c("1|0", "0|1", "1/0", "0/1"))
-    
     if(nrow(fsnps)>0){
       snps <- fsnps %>%
         mutate(mut_id=paste0("s", c(1:nrow(.))+nrow(df_gene)))
-      
-      
       append_loglist(nrow(snps), "SNPs detected in distCutOff range")
-      
       if(!"af" %in% names(snps)){
         if("dp4" %in% names(snps)){
           snps$af <- lapply(seq(1,nrow(snps)), function(i){
             sum(snps$dp4[[i]][c(3,4)])/sum(snps$dp4[[i]])
           }) %>% as.numeric()  
         } 
-      } 
-      
-      
+      }
       gr_snps <- GRanges(snps %>% select(1:3, mut_id))
-      #print(gr_snps)
-      #print(haploBlocks)
       if(!is.null(haploBlocks)){
         merged_haploblocks <- mergeByOverlaps(gr_snps, haploBlocks) %>%
           as_tibble() %>%
@@ -1051,12 +1017,9 @@ load_snps <- function(df_gene, phasedVcf, haploBlocks, distCutOff, verbose, somC
         merged_haploblocks <- snps %>% select(mut_id) %>%
           mutate(hap_id=NA)
       }
-      
       merged_somCna <- mergeByOverlaps(gr_snps, somCna) %>%
         as_tibble() %>%
         select(all_of(names(.) %>% .[which(!str_detect(.,"\\."))]))
-      #print(merged_haploblocks)
-      #print( merged_somCna)
       annotated_snps <- left_join(
         snps,
         merged_haploblocks,
@@ -1066,8 +1029,7 @@ load_snps <- function(df_gene, phasedVcf, haploBlocks, distCutOff, verbose, somC
           .,
           merged_somCna,
           by="mut_id"
-        )   
-      
+        )
     } else {
       ## no high quality and heterozygous snps
       annotated_snps <- NULL
@@ -1076,8 +1038,6 @@ load_snps <- function(df_gene, phasedVcf, haploBlocks, distCutOff, verbose, somC
     ## no snps detected
     annotated_snps <- NULL
   }
-  
-  #print(annotated_snps)
   func_end()
   return(annotated_snps)
 }

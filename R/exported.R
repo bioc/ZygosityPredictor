@@ -317,7 +317,6 @@ predict_per_variant <- function(purity,
   } else {
     templateGenes <- geneModel$gene
   }
-  
   ## get variants not covered by CNV input
   if(!is.null(somSmallVars)){
     gr_som_cov <- subsetByOverlaps(somSmallVars, somCna) 
@@ -356,9 +355,7 @@ predict_per_variant <- function(purity,
   if(is_pre_eval){
     full_eval <- list(evaluation_per_variant= 
                   bind_incdel_to_pre_eval(df_incompletedels, df_all_mutations),
-                combined_uncovered=combined_uncovered
-                
-    )
+                combined_uncovered=combined_uncovered)
   } else {
     full_eval <- list(evaluation_per_variant=df_all_mutations,
                 df_incompletedels=df_incompletedels,
