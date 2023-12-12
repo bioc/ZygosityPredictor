@@ -18,7 +18,6 @@ predict_per_variant(
   includeIncompleteDel = TRUE,
   assumeSomCnaGaps = FALSE,
   byTcn = TRUE,
-  is_pre_eval = TRUE,
   verbose = FALSE
 )
 }

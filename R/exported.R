@@ -7,9 +7,10 @@
 #' phasing results#' 
 #' 
 #' @export
+#' @importFrom rlang ensym
 gene_ov <- function(fp, inp_gene, n=20){
-  inp_gene <- as.character(rlang::ensym(inp_gene))
-  
+  #inp_gene <- as.character(rlang::ensym(inp_gene))
+  inp_gene <- as.character(ensym(inp_gene))
   eval_per_gene <- fp$eval_per_gene %>% filter(gene==inp_gene) 
   eval_per_var <- fp$eval_per_variant %>% filter(gene==inp_gene) %>%
     mutate_at(.vars=c("af", "tcn", "wt_cp", "aff_cp"),
@@ -116,12 +117,6 @@ ZP_ov <- function(fp){
 #' aff_germ_copies(af=0.67, tcn=2, purity=0.9, chr="chrX", sex="female")
 aff_germ_copies <- function(chr, af, tcn, purity, sex, 
                             c_normal=NULL, af_normal=0.5){
-  # vb <<- FALSE
-  # call_depth <<- 0
-  # log_depth <<- 0
-  # timelist  <<- list()
-  # plg <<- FALSE
-  # dg <<. FALSE
   cv <- formula_checks(chr, af, tcn, purity, sex, c_normal, af_normal)
   aff_cp <- cv$af*cv$tcn+(cv$af-cv$af_normal)*cv$c_normal*((1/cv$purity)-1)
   return(aff_cp) 
@@ -149,12 +144,6 @@ aff_germ_copies <- function(chr, af, tcn, purity, sex,
 #' aff_som_copies(chr="chrX", af=0.67, tcn=2, purity=0.9, sex="female")
 #' @export
 aff_som_copies <- function(chr, af, tcn, purity, sex, c_normal=NULL){
-  # vb <<- FALSE
-  # call_depth <<- 0
-  # log_depth <<- 0
-  # timelist  <<- list()
-  # plg <<- FALSE
-  # dg <<- FALSE
   cv <- formula_checks(chr, af, tcn, purity, sex, c_normal)
   aff_cp <- cv$af*(cv$tcn+cv$c_normal*((1/cv$purity)-1))
   return(aff_cp)
@@ -285,7 +274,7 @@ predict_per_variant <- function(purity,
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
     som_covered <- germ_covered <- final_phasing_info <- 
     combined_snp_phasing <- NULL
-  if(!exists("embedded")){
+  if(!exists("global_ZygosityPredictor_variable_embedded")){
     is_pre_eval <- TRUE
     set_global_variables(FALSE, verbose, FALSE)
     somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
@@ -548,7 +537,7 @@ predict_zygosity <- function(purity,
     combined_eval_per_gene <- full_phasing_info <- NULL
   ## define global debugging variable
   set_global_variables(debug, verbose, printLog)
-  embedded <<- TRUE
+  global_ZygosityPredictor_variable_embedded <<- TRUE
   func_start()
   somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                           assumeSomCnaGaps, colnameTcn, 

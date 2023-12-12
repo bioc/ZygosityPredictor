@@ -28,7 +28,6 @@ predict_zygosity(
   verbose = FALSE,
   debug = FALSE,
   logDir = NULL,
-  refGen = "hg19",
   snpQualityCutOff = 1,
   phasingMode = "fast"
 )
@@ -88,6 +87,10 @@ excluded}
 \item{includeIncompleteDel}{default = TRUE; if FALSE heterzygous deleteions 
 are excluded}
 
+\item{showReadDetail}{default = FALSE; if TRUE a table is added to the 
+output, containing all used reads/rea-pairs with anntated read classification 
+(mut1, mut2, both, none, skipped, dev_var)}
+
 \item{printLog}{default = FALSE; if TRUE the gene which is evaluated is 
 printed in console, 
 containing the query-name of each read which was used to perform 
@@ -133,18 +136,12 @@ exponentially.}
 \item{logDir}{character; path to directory where logfiles and detailed infos 
 of the run can be stored, if not given, no details will be stored or printed}
 
-\item{refGen}{character, default="hg38; relevant if vcf files are provided
-for haploblock or imbalance phasing}
-
 \item{snpQualityCutOff}{numeric, default=1; Cutoff to filter for SNPS that 
 can be used for phasing}
 
 \item{phasingMode}{character, default="fast"; if set to full. Even if high 
 confidence phasing result could be achieved, following phasing approaches 
-will be carried out
-#' @param showReadDetail default = FALSE; if TRUE a table is added to the 
-output, containing all used reads/rea-pairs with anntated read classification 
-(mut1, mut2, both, none, skipped, dev_var)}
+will be carried out}
 }
 \value{
 A list of dataframes. Those are the evaluation per variant, 

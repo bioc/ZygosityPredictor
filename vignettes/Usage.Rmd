@@ -228,8 +228,7 @@ five classes:
   + **bamDna\*\* **: character; path to indexed alignment (.bam format)
   + **bamRna**: character; path to rna-sequencing data (.bam format). 
   + **vcf**: character, or character vector containing several vcf file paths; 
-  path to variant call file (.vcf.gz format) or .vcf. If provided also input
-  **refGen** is required.
+  path to variant call file (.vcf.gz format) or .vcf.
   for extended SNP phasing if variants on the same gene are too far away from
   each other for direct phasing
 * Sample meta information:
@@ -349,20 +348,21 @@ fp <- predict_zygosity(
 
 Of note, the results displayed here were chosen to explain and exemplify the 
 functionality of the tool; biological and medical impact of the specific 
-variants had not been a selection criterion.
-The result which is returned by the function consists of a list of three 
-(or up to six) tibbles. 
+variants has not been a selection criterion.
+The result which is returned by the function consists of a list of tibbles: 
 
 * Evaluation per variant
 * Evaluation per gene
-* Phasing info
+* Main Phasing info
+* detailed phasing info
 * Read pair info (only if showReadDetail=TRUE and logDir is provided)
 * Variants not covered by somCna (only if present and no sCNA gap assumption 
 was done)
-* detailed information about extended SNP phasing if it was performed
 
-The information can also be accesed via the accessor 
-functions: ```ZP_ov()``` and ```gene_ov()```. 
+One way of accessing the results is a simple extraction of the tibbles from the
+list. In addition, two accessor function are implemented: ```ZP_ov()``` shows an 
+overview of the full resultand and ```gene_ov()``` shows more detailed 
+information about a selected gene.
 
 ```{r}
 ZP_ov(fp)
@@ -370,10 +370,10 @@ ZP_ov(fp)
 
 The function provides an overview about the evaluations done by 
 ZygosityPredictor. One can see that in our case 12 input small variants were 
-used to predict 7 gene status. Of those, two got the status all_copies_affected.
+used to predict gene status. Of those, two got the status all_copies_affected.
 By using  ```gene_ov()```, more detailed information can be viewed about how the
 tool came to a gene status. What the accessor function does is basically 
-filtering the output tibbles to the gene of relevance.
+filtering the output tibbles to the gene of relevance. Detailed explannation about all columns can be found below the next chunk.
 
 ```{r}
 gene_ov(fp, OR2J1)
@@ -398,8 +398,48 @@ As can be seen in the main phasing combinations in column: min_poss_wt_cp, none
 of the main phasing combinations could lead to less than 0.5 wt copies even if 
 the variants were found on different reads.
 
+The outputs contain columns providing more detailed information about gene status definition
+which will be explained in the following. 
 
 
+* All phasing combinations (either visible via ```gene_ov()``` or accessable via
+```fp$detailed_phasing_info```):
+
++ **both**: number of reads classified as both (both variants present), adjusted with basecall and maping quality
++ **mut1**: number of reads classified as mut1 (only the first variant of combination pßresent), adjusted with basecall and maping quality
++ **mut2**: number of reads classified as mut2 (only the second variant of combination pßresent), adjusted with basecall and maping quality
++ **dev_var**: number of reads having another variant at one of the positions of the expected variants
++ **skipped**: number of reads not mapping to the position of the variant (only expected with RNA reads)
++ **nstatus**: variant constellation in numeric representation (2 = all copies affected, 1 = wt copies left, 0 = undefined)
++ **status**: variant constellation in character representation
++ **nstatus**: numeric representation of constellation
++ **xsq_same/xsq_diff**: X-squared values of chi-squared tests. _same is the one against expected same result
++ **p_same/p_diff**: p-value of chi-squared tests
++ **v_same/v_diff**: Cramers V value of chi-squared tests (5)
++ **none**: number of reads classified as none (none of both variants found)
++ **DNA_rds/RNA_rds**: number of DNA/RNA reads used
++ **dist**: Distance between variants
++ **class_comb**: mutational classes corresponding to character combination identifier
++ **comb**: combination identifier in character representation (mX-mY). 
++ **ncomb**: combination identifier in numeric representation. Derived from position in phasing matrix
++ **subclonal**: TRUE if reads with classification both and either mut1 or mut2 were found. There are two explanantions why soimething like this could happen in a
+cancer sample: First that the tumor is not fully clonal and a subclone is present carrying only the variant that happened earlier during tumor development. The second variant is only carried by a subclone that emerged later. The second explanation could be that the reads are actually from the same cells but a duplication of one allel happend between their occurence. We could imagine a scenario were the genotype of a gene is 1:2 and both variants are on the duplicated allele. If one of them happend before the duplication, we would expect reads carrying only the earlier variant but also reads carrying both of them.
++ **unplausible** TRUE if reads with classification both, mut1 and mut2 are found for the same variant combination. Compared to the "subclonal" case this is more difficult to explain and might also be an artifact. The only way this could happen in a cancer sample is that the same mutational event happens independently on both alleles and or in different subclones. This case is generally very unlikely and is therefore annotated as unplasuible. Such a setting is also reflected in the p-valkue and thereofre the confidence, as similary with both expected results is found.
+
+
+
+* Main phasing combinations (either visible via ```gene_ov()``` or accessable via
+```fp$phasing_info```):
+
++ **phasing**: Info which phasing approach was used (direct, indirect, haploblock, imbalance, exclusion)
++ **via**: combinations which were used to solve this combination. For direct phasing the number is the numeric representation of the combi9nation identifier.
+            For indirect phasing it will look like this: 4-7-8 which measn thta the combinations 4, 7 and 8 were used to solve.
++ **conf**: aggregated confidence for the combination
++ **wt_cp**: exact left wt copies. If phasing of combination was not succesful, wt copies can not be calculated acurately which leads to NA
++ **min_poss_wt_cp**: Minimal possible wt copies if variants are on different copies according to affected copynumber of the two variants in the combination. If greater than 0.5, the constellation is unable to contributre to a status of all copies affrected for the gene.
++ **max_poss_wt_cp**: maximum possible wt copies if the two variants are on the same copy
++ **score**: contribution to gene status. (2 is a contribution of all copies affected by the combination, 1 has more than 0.5 wt copies left)
++ **gene**: Gene that w2as tried to solve with the combination
 
 
 
@@ -420,108 +460,14 @@ assign variants to genes in the following analysis. The most important results
 of this step are the calculation of the affected and wildtype copies, as well
 as, depending on the data, an initial check of whether a variant already affects 
 all copies.
+
+
 Of note, there can be situations in which left wildtype copies are below 0.5,  
-but still this information is not sufficient to predict *“all copies affected”* 
+but still this information is not sufficient to predict *“all_copies_affected”* 
 without doubt. Depending on the origin of the variant, further criteria must 
 be met (e.g., LOH). The procedure for this first check is shown in the pre_info 
 column.
 
-
-```{r}
-# here the new columns are selected and viewed
-fp$eval_per_variant %>%
-  # these steps are just to have a better overview
-  # round numeric columns
-  mutate_at(.vars=c("af","tcn", "aff_cp", "wt_cp"),
-            .funs = round, 2) %>%
-  # to get a better overview, the columns which are already in the inut are 
-  # removed
-  select(-chr, -pos, -alt, -ref, -af)
-```
-For example, mutation m1 in *TRANK1* (first line) fulfills all criteria that 
-are sufficient for a germline variant to say with a high degree of certainty 
-that all copies are affected, which can be seen in the pre_info column. The 
-same applies to the somatic *JUP* variant. In the case of the *ELP2*, *CDYL* 
-and *SCRIB* genes, there are two or even three variants, neither of which leads 
-to complete loss of the wildtype gene, which is why the next step is to check 
-whether they together affect all copies. Homzygous deletions (homdels) always 
-lead automatically to "all copies affected", whereas incomplete deletions do not 
-affect all copies.
-
-### Aggregation per gene
-
-The aggregation at gene level is one of the main features of ZygosityPredictor. 
-A prediction of how many copies are affected by mutations is provided for every 
-gene. The final prediction is stored in tibble format with three columns: gene, 
-status - either “all copies affected” or “wt copies left” - and an info column 
-that explains how the prediction was made for that gene.
-```{r}
-fp$eval_per_gene
-```
-
-Each gene appears once in the table. If there are several variants in one gene, 
-the info always refers to the one that affects the highest number of copies. If 
-most copies are affected by a combination of  two small variants, the info 
-refers to both of them. In general, the heterozygous deletions have the lowest 
-priority; and if any other small variant or homdel is present in the gene, it 
-will always be indicated as the more relevant variant. In the case of *ELP2*, 
-*CDYL* and *SCRIB*, several small variants are present, which is why the tool 
-attempts to do phasing at the present position. This is indicated by “phasing” 
-in the info column. The exact results of the phasing can be viewed in detail 
-in the next step.
-
-### Haplotype-phasing results
-
-A haplotype phasing is only performed if more than one variant occurs in a 
-gene, each of which does not affect all copies of the gene by itself. The tool 
-then tries to phase at this position to check if the variants are located on 
-the same or different copies. That means that not at every prediction a phasing 
-is done and therefore the following output is not always present.
-```{r}
-fp$phasing_info
-```
-In the present case, phasing was performed for three genes separately. 
-The output contains information such as the distance between the two variants 
-and the tcn at the position. If tcn differs at both positions, for example for 
-breakpoint genes, the larger one is displayed here. The status column shows 
-whether the mutations were found on the same copy (*same*) or on different 
-copies (*diff*). This prediction is determined by whether the mutations are on 
-the same reads / read pairs. The column DNA_rds contains the number of 
-reads / read pairs that cover both positions. If RNA is available, the number 
-of reads / read pairs is also displayed for RNA reads. Depending on whether the 
-variants were found on different or the same copies, a final prediction for the 
-remaining wildtype-copies can be calculated from the affected copies of both 
-variants. 
-This final calculation can be found in the column *left_wt_cp*. Only if the 
-variants are found on different copies and the remaining wildtype-copies are 
-below 
-0.5, it can be assumed that no wildtype copies are left. 
-The four columns *both*, 
-*none*, *mut1*, and *mut2* indicate how many of the reads / read pairs belong 
-to each category: Both variants detected, none, only the first, or only the 
-second. RNA reads that do not contain an exon necessary for phasing, e.g., due 
-to alternative splicing or that map somewhere entirely different in the genome, 
-end up in a category called *non-overlapping*. The category *dev_var* contains 
-reads / read pairs that carry a different variant than the one to be expected 
-at the position. The output for *ELP2* shows how genes are handled in which 
-more than 2 variants occur. Each mutation is then combined once with each other 
-to perform the phasing on each combination. In the case of *ELP2* three 
-variants are present, resulting in three possible combinations. Two of the 
-variants are located close to each other (*m1* and *m2*), while the third one 
-has a distance of almost 9000 basepairs to them. Therefore, it is only possible 
-to assign a status to the combination of the close variants. The two other 
-combinations get the status "null" as no overlapping reads / read pairs are 
-present. Theoretically, the tool can attempt phasing if no reads overlap 
-both positions. For such distant variants, intermediate SNPs can be used, 
-which then have to be provided by the input *vcf*.
-
-### Detailed info about used read pairs
-
-This output is only provided if the option showReadDetail is set TRUE. It 
-consists of a table containing every read pair that was used to perform 
-haplotype phasing. In more detail, the read name of the read in the bam file is 
-provided with the classification in one of the four categories mentioned before 
-(*both, none, mut1, mut2, no_overlap, dev_var*).
 
 # References
 
@@ -538,6 +484,8 @@ Manipulation_. R package version 1.0.10,
 4. Wickham H (2022). _stringr: Simple, Consistent Wrappers for Common String 
 Operations_. 
 https://stringr.tidyverse.org, https://github.com/tidyverse/stringr.
+5. Cramér, Harald. 1946. Mathematical Methods of Statistics. Princeton: 
+Princeton University Press, page 282 (Chapter 21. The two-dimensional case)
 
 ```{r}
 sessionInfo()

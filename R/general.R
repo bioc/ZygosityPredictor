@@ -6,16 +6,16 @@ func_start <- function(){
   vm(mes, 1)
 }
 increment_log_depth <- function() {
-  log_depth <<- log_depth + 1
+  global_ZygosityPredictor_variable_log_depth <<- global_ZygosityPredictor_variable_log_depth + 1
 }
 decrement_log_depth <- function() {
-  log_depth <<- log_depth - 1
+  global_ZygosityPredictor_variable_log_depth <<- global_ZygosityPredictor_variable_log_depth - 1
 }
 increment_call_depth <- function() {
-  call_depth <<- call_depth + 1
+  global_ZygosityPredictor_variable_call_depth <<- global_ZygosityPredictor_variable_call_depth + 1
 }
 decrement_call_depth <- function() {
-  call_depth <<- call_depth - 1
+  global_ZygosityPredictor_variable_call_depth <<- global_ZygosityPredictor_variable_call_depth - 1
 }
 #' @importFrom readr write_tsv
 store_log <- function(geneDir, obj, file){
@@ -26,71 +26,6 @@ store_log <- function(geneDir, obj, file){
                                file))      
     }
   }
-}
-#' @keywords internal
-#' @importFrom stringr %>%
-#' @importFrom GenomicRanges GRanges elementMetadata
-#' @importFrom GenomicAlignments readGAlignmentPairs first last
-#' @importFrom Rsamtools ScanBamParam
-#' @importFrom IRanges subsetByOverlaps
-#' @importFrom dplyr tibble
-prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2){
-  func_start()
-  qname.first <- . <- NULL
-  ## importFrom dplyr tibble filter
-  ref_pos1 <- as.numeric(pos1)
-  ref_pos2 <- as.numeric(pos2)
-  ref_chr1 <- as.character(chr1)
-  ref_chr2 <- as.character(chr2)
-  #print(pos1)
-  #print(pos2)
-  if(pos1>pos2){
-    #stop("avoid changing position order")
-    ## exchange does not matter here
-    ref_pos1 <- as.numeric(pos2)
-    ref_pos2 <- as.numeric(pos1)
-    ref_chr1 <- as.character(chr2)
-    ref_chr2 <- as.character(chr1)
-  }
- #print(ref_chr1)
- #print(ref_chr2)
-  ref_gr1 <- GRanges(seqnames = ref_chr1, 
-                                   ranges = ref_pos1)
-  ref_gr2 <- GRanges(seqnames = ref_chr2, 
-                                   ranges = ref_pos2)
-  ## now load all reads/read-pairs that cover the position of the first variant
-  #vm("loading reads", 1)
-  all_covering_read_pairs <- readGAlignmentPairs(
-    bamDna,
-    param=ScanBamParam(
-      which=GRanges(seqnames = ref_chr1, 
-                                   ranges = ref_pos1),
-      what=c("qname","seq", "cigar", "mapq", "qual")
-    )) 
-  if(length(all_covering_read_pairs)==0){
-    filtered_reads <- tibble()
-  } else {
-    ## combine all ranges and check for ref_pos2
-    all_reads <- c(
-      GenomicAlignments::first(all_covering_read_pairs) %>%
-        GRanges(),
-      GenomicAlignments::last(all_covering_read_pairs) %>%
-        GRanges()
-    )
-    
-    shared_read_pairs <- all_reads %>%
-      subsetByOverlaps(.,ref_gr2) %>%
-      elementMetadata(.) %>%
-      .[["qname"]] %>%
-      unique()
-    
-    filtered_reads <- all_reads[
-      which(all_reads$qname %in% shared_read_pairs)
-    ]
-    
-  }
-  func_end()
-  return(filtered_reads)
 }
 #' @keywords internal
 #' @importFrom stringr %>%
@@ -404,7 +339,8 @@ ascii_to_dec <- function(ascii_encoded){
 
 #' @importFrom knitr kable
 print_tibble <- function(tbl_in){
-  res <- paste(as.character(knitr::kable(tbl_in)), collapse="\n")
+  # res <- paste(as.character(knitr::kable(tbl_in)), collapse="\n")
+  res <- paste(as.character(kable(tbl_in)), collapse="\n")
   return(res)
 }
 #' @importFrom GenomicRanges GRanges seqnames start end
@@ -755,12 +691,17 @@ predict_zygosity_genewise <- function(GENE,
   } else {  
       append_loglist(nrow(df_gene),
             "heterozygous variants detected: Initializing haplotype phasing")
-      #print(haploBlocks)
+      if(!is.null(logDir)){
+        geneDir <- file.path(logDir, GENE)
+        dir.create(geneDir)
+      } else {
+        geneDir <- NULL
+      }
       ## returns two tibbles: first one direct phasing combinations
       ## second one indirect phasing combinations
       full_phasing_result <- phase(df_gene, somCna, bamDna, purity, sex, bamRna, 
                                    haploBlocks, vcf, distCutOff, printLog,
-                                    logDir, showReadDetail, 
+                                   geneDir, showReadDetail, 
                                    snpQualityCutOff, phasingMode)
       all_comb <- full_phasing_result[[1]] %>%
         mutate(gene=GENE)
@@ -768,7 +709,7 @@ predict_zygosity_genewise <- function(GENE,
                                     printLog)
       phasing_info <- full_phasing_result[[2]] %>%
         mutate(gene=GENE)
-      
+      store_log(geneDir, phasing_info, "all_phasing_combinations.tsv")
       mat_phased_gene <- list()
       mat_info_gene <- list()
       mat_phased_gene[[GENE]] <- full_phasing_result[[3]]
@@ -791,7 +732,7 @@ predict_zygosity_genewise <- function(GENE,
                                mat_phased_gene,
                                mat_info_gene)
                           )
-  log_message <- unlist(loglist) %>% paste(collapse = "\n")
+  log_message <- unlist(global_ZygosityPredictor_variable_loglist) %>% paste(collapse = "\n")
   func_end()
   return(append(zygosity_gene, log_message))
 }
@@ -943,28 +884,38 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
 }
 remove_global_vars <- function(){
   suppressWarnings(
-    rm(call_depth, log_depth, timelist, dg, vb, plg, mat_info, mat_phased, 
-     mat_dist, solved_master_combs, main_muts, main_pos, embedded)
+    rm(global_ZygosityPredictor_variable_call_depth, 
+       global_ZygosityPredictor_variable_log_depth, 
+       global_ZygosityPredictor_variable_timelist, 
+       global_ZygosityPredictor_variable_debug, 
+       global_ZygosityPredictor_variable_verbose, 
+       global_ZygosityPredictor_variable_printLog, 
+       global_ZygosityPredictor_variable_mat_info, 
+       global_ZygosityPredictor_variable_mat_phased, 
+       global_ZygosityPredictor_variable_mat_dist, 
+       global_ZygosityPredictor_variable_main_muts, 
+       global_ZygosityPredictor_variable_main_pos, 
+       global_ZygosityPredictor_variable_embedded)
   )
 }
 set_global_variables <- function(debug, verbose, printLog){
-  call_depth <<- 0
-  log_depth <<- 0
-  timelist  <<- list()
+  global_ZygosityPredictor_variable_call_depth <<- 0
+  global_ZygosityPredictor_variable_log_depth <<- 0
+  global_ZygosityPredictor_variable_timelist  <<- list()
   if(debug==TRUE){
-    dg <<- TRUE
+    global_ZygosityPredictor_variable_debug <<- TRUE
   } else {
-    dg <<- FALSE
+    global_ZygosityPredictor_variable_debug <<- FALSE
   }
   if(verbose==TRUE){
-    vb <<- TRUE
+    global_ZygosityPredictor_variable_verbose <<- TRUE
   } else {
-    vb <<- FALSE
+    global_ZygosityPredictor_variable_verbose <<- FALSE
   }
   if(printLog==TRUE){
-    plg <<- TRUE
+    global_ZygosityPredictor_variable_printLog <<- TRUE
   } else {
-    plg <<- FALSE
+    global_ZygosityPredictor_variable_printLog <<- FALSE
   }
 }
 #' @keywords internal
@@ -974,26 +925,26 @@ catt <- function(printLog=FALSE, level, text){
   }
 }
 increment_loglist <- function(){
-  loglist <<- list()
-  timelog <<- list()
+  global_ZygosityPredictor_variable_loglist <<- list()
+  #global_ZygosityPredictor_variable_timelog <<- list()
 }
 #' @importFrom stringr str_replace_all %>%
 append_loglist <- function(...){
-  filler <- paste(rep("  ", call_depth), collapse = "")
+  filler <- paste(rep("  ", global_ZygosityPredictor_variable_call_depth), collapse = "")
   appendix <- paste(..., collapse = " ") %>%
     paste0(filler,.) %>%
     str_replace_all("\n", paste0("\n",filler))
-  loglist <<- append(loglist, appendix)
-  timelog <<- append(timelog, as.character(Sys.time()))
-  if(plg==TRUE){
+  global_ZygosityPredictor_variable_loglist <<- append(global_ZygosityPredictor_variable_loglist, appendix)
+  #global_ZygosityPredictor_variable_timelog <<- append(global_ZygosityPredictor_variable_timelog, as.character(Sys.time()))
+  if(global_ZygosityPredictor_variable_printLog==TRUE){
     message(appendix)
   }
 }
 add_timestamp <- function(){
-  timelist[[call_depth]] <<- Sys.time()
+  global_ZygosityPredictor_variable_timelist[[global_ZygosityPredictor_variable_call_depth]] <<- Sys.time()
 }
 remove_timestamp <- function(){
-  timelist <<- timelist[c(1:call_depth)]
+  global_ZygosityPredictor_variable_timelist <<- global_ZygosityPredictor_variable_timelist[c(1:global_ZygosityPredictor_variable_call_depth)]
 }
 #' @importFrom magrittr %>%
 vm <- function(mes, depth=0){
@@ -1003,8 +954,8 @@ vm <- function(mes, depth=0){
   if(depth<0){
     to_add <- "+-"
   }
-  if(vb==TRUE){
-    to_print <- paste0(paste(rep("| ", call_depth),collapse=""), to_add,mes)
+  if(global_ZygosityPredictor_variable_verbose==TRUE){
+    to_print <- paste0(paste(rep("| ", global_ZygosityPredictor_variable_call_depth),collapse=""), to_add,mes)
   } 
   if(depth>0){
     increment_call_depth()
@@ -1012,12 +963,12 @@ vm <- function(mes, depth=0){
     timestamp <- ""
   }  
   if(depth<0){
-    timestamp <- pt(timelist[[call_depth]], Sys.time()) %>%
+    timestamp <- pt(global_ZygosityPredictor_variable_timelist[[global_ZygosityPredictor_variable_call_depth]], Sys.time()) %>%
       paste("  ~",.)
     decrement_call_depth()
     remove_timestamp()
   }
-  if(vb==TRUE){
+  if(global_ZygosityPredictor_variable_verbose==TRUE){
     message(to_print, timestamp)
   }
 }
