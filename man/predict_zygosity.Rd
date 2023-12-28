@@ -29,7 +29,8 @@ predict_zygosity(
   debug = FALSE,
   logDir = NULL,
   snpQualityCutOff = 1,
-  phasingMode = "fast"
+  phasingMode = "fast",
+  copyNumberPhasing = FALSE
 )
 }
 \arguments{

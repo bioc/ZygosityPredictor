@@ -111,8 +111,8 @@ merge_sCNAs <- function(obj, somCna){
   merged <- obj %>%
     mergeByOverlaps(somCna) %>% as_tibble() %>%
     mutate(cna_type=ifelse(str_detect(cna_type, "LOH"), "LOH", "HZ")) %>%
-    select(chr=1, pos=2, gene, ref, alt, af, tcn, cna_type, all_imb, 
-           tcn_assumed) %>%
+    select(chr=1, pos=2, gene, ref, alt, af, tcn, cna_type, all_imb, gt_cna, 
+           seg_id, tcn_assumed) %>%
     mutate_at(.vars = c("af", "tcn"), .funs=as.numeric) %>%
     rowwise() #%>%
   func_end()
@@ -246,6 +246,8 @@ extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE,
                    alt= NA,
                    cna_type=DEL_TYPE,
                    all_imb=NA,
+                   gt_cna=NA,
+                   seg_id=NA,
                    aff_cp=ploidy-as.numeric(CNV[["tcn"]]),
                    wt_cp=as.numeric(CNV[["tcn"]]),
                    pre_info=pre_info,
@@ -314,6 +316,8 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
              tcn_assumed,
              cna_type,
              all_imb,
+             gt_cna,
+             seg_id,
              aff_cp,
              wt_cp,
              pre_info,
@@ -657,14 +661,16 @@ predict_zygosity_genewise <- function(GENE,
                                       logDir, 
                                       somCna, 
                                       snpQualityCutOff, 
-                                      phasingMode){
+                                      phasingMode,
+                                      copyNumberPhasing){
   #func_start()
   vm("predict_zygosity_genewise", 1) ## do not replcae!!!
   start_gene_eval <- Sys.time()
   increment_loglist()
   append_loglist(GENE)
   gene <- pre_info <-  chr <-  pos <- wt_cp <-  mut_id <- status <- . <- 
-    score <- comb <- dist <- tcn <- info <- n <- all_comb <- phasing_info <- mat_phased_gene <- 
+    score <- comb <- dist <- tcn <- info <- n <- all_comb <- 
+    read_level_phasing_info <- copy_number_phasing_info <- mat_phased_gene <- 
   mat_info_gene <- NULL 
   #start_gene_eval <- Sys.time()
   pre_df_gene <- evaluation_per_variant %>% filter(gene==GENE)
@@ -702,14 +708,18 @@ predict_zygosity_genewise <- function(GENE,
       full_phasing_result <- phase(df_gene, somCna, bamDna, purity, sex, bamRna, 
                                    haploBlocks, vcf, distCutOff, printLog,
                                    geneDir, showReadDetail, 
-                                   snpQualityCutOff, phasingMode)
+                                   snpQualityCutOff, phasingMode, 
+                                   copyNumberPhasing)
       all_comb <- full_phasing_result[[1]] %>%
         mutate(gene=GENE)
       eval_for_gene <- eval_phasing_new(all_comb, df_gene,  
                                     printLog)
-      phasing_info <- full_phasing_result[[2]] %>%
+      read_level_phasing_info <- full_phasing_result[[2]] %>%
         mutate(gene=GENE)
-      store_log(geneDir, phasing_info, "all_phasing_combinations.tsv")
+      copy_number_phasing_info <- full_phasing_result[[5]] %>%
+        mutate(gene=GENE)
+      store_log(geneDir, read_level_phasing_info, "all_phasing_combinations.tsv")
+      store_log(geneDir, copy_number_phasing_info, "all_phasing_combinations.tsv")
       mat_phased_gene <- list()
       mat_info_gene <- list()
       mat_phased_gene[[GENE]] <- full_phasing_result[[3]]
@@ -728,9 +738,10 @@ predict_zygosity_genewise <- function(GENE,
   zygosity_gene <- list(pre_df_gene, 
                           list(df_reduced, 
                                all_comb,
-                               phasing_info,
+                               read_level_phasing_info,
                                mat_phased_gene,
-                               mat_info_gene)
+                               mat_info_gene,
+                               copy_number_phasing_info)
                           )
   log_message <- unlist(global_ZygosityPredictor_variable_loglist) %>% paste(collapse = "\n")
   func_end()
@@ -807,6 +818,7 @@ combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
 #' @importFrom purrr compact
 combine_main_variant_tables <- function(df_germ, df_som, df_homdels,
                                         templateGenes, purity){
+  func_start()
   gene <- . <- NULL
   df_all_mutations_unfiltered <- list(df_germ, df_som, df_homdels) %>% 
     compact() %>%
@@ -827,6 +839,7 @@ combine_main_variant_tables <- function(df_germ, df_som, df_homdels,
       "variant inputs"
     )
   }
+  func_end()
   return(df_all_mutations)
 }
 #' @keywords internal

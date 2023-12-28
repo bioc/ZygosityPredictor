@@ -334,13 +334,21 @@ predict_per_variant <- function(purity,
   df_incompletedels <- extract_all_dels_of_sample(somCna, geneModel, 
                                                   "incompletedel", TRUE, sex, 
                                                   ploidy, includeIncompleteDel)
+  
+  #print(df_germ)
+  #print(df_som)
+  #print()
+  
   ## predict zygosity for each gene
   if(!is.null(df_germ)|!is.null(df_som)|!is.null(df_homdels)){
+    #print(1)
     df_all_mutations <- combine_main_variant_tables(df_germ, df_som, 
                                                     df_homdels,
                                                     templateGenes, purity)
+    #print(2)
   }
   if(is_pre_eval){
+    
     full_eval <- list(evaluation_per_variant= 
                   bind_incdel_to_pre_eval(df_incompletedels, df_all_mutations),
                 combined_uncovered=combined_uncovered)
@@ -526,7 +534,8 @@ predict_zygosity <- function(purity,
                              debug=FALSE,
                              logDir=NULL,
                              snpQualityCutOff=1, 
-                             phasingMode="fast"
+                             phasingMode="fast",
+                             copyNumberPhasing=FALSE
 ){
   status <- info <- wt_cp <- . <- df_homdels <- evaluation_per_variant <- 
     gene <- final_phasing_info <- combined_read_details <-  final_output <-
@@ -564,7 +573,7 @@ predict_zygosity <- function(purity,
       bamRna <- check_rna(bamRna)
       logDir <- check_logDir(logDir)
       haploBlocks <- check_haploblocks(haploBlocks)
-      phasedVcf <- check_vcf(vcf)
+      vcf <- check_vcf(vcf)
       per_gene <- lapply(
         unique(evaluation_per_variant$gene), 
         predict_zygosity_genewise, 
@@ -576,19 +585,23 @@ predict_zygosity <- function(purity,
         purity,
         sex,
         haploBlocks,
-        phasedVcf,
+        vcf,
         distCutOff, 
         logDir,
         somCna,
         snpQualityCutOff, 
-        phasingMode)
+        phasingMode,
+        copyNumberPhasing)
       full_eval_per_gene <- lapply(per_gene, nth, n=2) %>% compact()
       log_list_per_gene <- lapply(per_gene, nth, n=3)
       if(length(full_eval_per_gene)!=0){
         full_phasing_info <- lapply(full_eval_per_gene, nth, n=2) %>% 
           compact() %>% 
           bind_rows() 
-        detailed_phasing_info <- lapply(full_eval_per_gene, nth, n=3) %>% 
+        detailed_read_level_phasing_info <- lapply(full_eval_per_gene, nth, n=3) %>% 
+          compact() %>% 
+          bind_rows() 
+        detailed_copy_number_phasing_info <- lapply(full_eval_per_gene, nth, n=6) %>% 
           compact() %>% 
           bind_rows() 
         comb_mat_phased <- lapply(full_eval_per_gene, nth, n=4) %>%
@@ -616,7 +629,8 @@ predict_zygosity <- function(purity,
     phasing_info=full_phasing_info,
     uncovered_input=evaluation_per_variant_pre$combined_uncovered,
     log_list_per_gene=log_list_per_gene,
-    detailed_phasing_info=detailed_phasing_info,
+    detailed_read_level_phasing_info=detailed_read_level_phasing_info,
+    detailed_copy_number_phasing_info=detailed_copy_number_phasing_info,
     mat_phased=comb_mat_phased,
     mat_info=comb_mat_info
   ) %>%

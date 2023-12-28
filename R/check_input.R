@@ -53,8 +53,20 @@ assign_correct_colnames <- function(obj, type){
       .[which(!is.na(.))]
     if(length(col_genotype)>0){
       ## if colum already there, rename it
-      elementMetadata(obj)[,"gt_cna"] <- 
-        elementMetadata(obj)[,col_genotype]
+      ## and check if it has only entries that are actually imbalanced... remove
+      ## something like 2:2 or 3:3
+      input_gt_col <- as.character(elementMetadata(obj)[,col_genotype]) %>%
+        lapply(.,function(GT){
+          uniqued_gts <- str_split(GT, ":") %>% unlist() %>% unique()
+          if(length(uniqued_gts)==1){
+            warning("column gt_cna contains annotations of balanced segments. They are removed from imbalance phasing if enabled")
+            return(NA)
+          } else {
+            return(GT)
+          }
+        }) %>%
+        unlist()
+      elementMetadata(obj)[,"gt_cna"] <- input_gt_col
     } else {
       ## if not yet there, calculate it for segments where it is possible
       obj$gt_cna <- case_when(
