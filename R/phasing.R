@@ -489,9 +489,9 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2){
                      ranges = ref_pos2)
   ## now load all reads/read-pairs that cover the position of the first variant
   #vm("loading reads", 1)
-  all_covering_read_pairs <- readGAlignmentPairs(
+  all_covering_read_pairs <-GenomicAlignments:: readGAlignmentPairs(
     bamDna,
-    param=ScanBamParam(
+    param=Rsamtools::ScanBamParam(
       which=ref_gr1,
       what=c("qname","seq", "cigar", "mapq", "qual")
     )) 
@@ -870,41 +870,46 @@ perform_indirect_phasing <- function(df_gene, vcf, bamDna, bamRna, haploBlocks,
 }
 #' @importFrom GenomicAlignments readGAlignments granges
 #' @importFrom Rsamtools ScanBamParam scanBamFlag
-#' 
-load_covering_reads <- function(ref_gr, rel_mut){
+custom_readGalign <- function(bamDna, ref_gr, first){
   func_start()
-  all_covering_reads_firstmate <- readGAlignments(
+  loaded <- GenomicAlignments::readGAlignments(
     bamDna,
-    param=ScanBamParam(
-      flag=scanBamFlag(isFirstMateRead=TRUE),
+    param=Rsamtools::ScanBamParam(
+      flag=Rsamtools::scanBamFlag(isFirstMateRead=first),
       which=ref_gr,
       what=c("qname","seq", "cigar", "mapq", "qual")
     ))    %>%
     GenomicAlignments::granges(use.mcols = T)
-  all_covering_reads_secondmate <- readGAlignments(
-    bamDna,
-    param=ScanBamParam(
-      flag=scanBamFlag(isFirstMateRead=FALSE),
-      which=ref_gr,
-      what=c("qname","seq", "cigar", "mapq", "qual")
-    ))    %>%
-    GenomicAlignments::granges(use.mcols = T)
+  func_end()
+  return(loaded)
+}
+load_covering_reads <- function(ref_gr, rel_mut, bamDna){
+  func_start()
+  all_covering_reads_firstmate <- custom_readGalign(bamDna, ref_gr, TRUE)
+  all_covering_reads_secondmate <- custom_readGalign(bamDna, ref_gr, FALSE)
   ## remove overlapping reads from same pair... so that its not counted two times
+  #print(1)
   all_covering_reads_rem_dup <- c(
     all_covering_reads_firstmate,
     all_covering_reads_secondmate[which(!all_covering_reads_secondmate$qname %in% all_covering_reads_firstmate$qname)]
   )
-  all_covering_reads_rem_dup$origin <- "DNA"
-  
-  all_reads <- lapply(all_covering_reads_rem_dup$qname, function(QNAME){
-    parsed_read <- parse_cigar(all_covering_reads_rem_dup, QNAME, paired=FALSE)
-    base_info1 <- extract_base_at_refpos(parsed_read, 
-                                         rel_mut$pos, 
-                                         rel_mut$class, 
-                                         rel_mut$alt, 
-                                         rel_mut$ref)  
-  }) %>%
-    bind_rows()
+  #print(2)
+  if(length(all_covering_reads_rem_dup)>0){
+    all_covering_reads_rem_dup$origin <- "DNA"
+    #print(3)
+    all_reads <- lapply(all_covering_reads_rem_dup$qname, function(QNAME){
+      parsed_read <- parse_cigar(all_covering_reads_rem_dup, QNAME, paired=FALSE)
+      base_info1 <- extract_base_at_refpos(parsed_read, 
+                                           rel_mut$pos, 
+                                           rel_mut$class, 
+                                           rel_mut$alt, 
+                                           rel_mut$ref)  
+    }) %>%
+      bind_rows()    
+  } else {
+    all_reads <- NULL
+  }
+
   func_end()
   return(all_reads)
 }
@@ -920,78 +925,82 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
                       ranges = rel_mut$pos)
     ## now load all reads/read-pairs that cover the position of the first variant
     #vm("loading reads", 1)
-    all_reads <- load_covering_reads(ref_gr, rel_mut)
+    all_reads <- load_covering_reads(ref_gr, rel_mut, bamDna)
     #print(rel_mut)
     #print(all_reads)
     gtl_m <- rel_mut$tcn
     gtl_k <- nrow(all_reads)
     
-    ## distinguih here between snvs and indels
-    if(rel_mut$class=="snv"){
-      gtl_eps_v <- all_reads %>%
-        .[which(.$base==rel_mut$alt),] %>%
-        .$qual %>%
-        lapply(ascii_to_dec) %>%
-        unlist() 
-      ## epsylon l has all reference read basecall qualities
-      ## it must be adjusted to only the somatic ones
-      gtl_eps_l_raw <- all_reads %>%
-        .[which(.$base==rel_mut$ref),] %>%
-        .$qual %>%
-        lapply(ascii_to_dec) %>%
-        unlist()              
+    if(!is.null(all_reads)){
+      if(rel_mut$class=="snv"){
+        gtl_eps_v <- all_reads %>%
+          .[which(.$base==rel_mut$alt),] %>%
+          .$qual %>%
+          lapply(ascii_to_dec) %>%
+          unlist() 
+        ## epsylon l has all reference read basecall qualities
+        ## it must be adjusted to only the somatic ones
+        gtl_eps_l_raw <- all_reads %>%
+          .[which(.$base==rel_mut$ref),] %>%
+          .$qual %>%
+          lapply(ascii_to_dec) %>%
+          unlist()              
+      } else {
+        
+        all_reads_indel <- all_reads %>%
+          mutate(indel_qual=10^(as.numeric(mapq)/(-10)))
+        
+        #print(all_reads_indel)
+        gtl_eps_v <- all_reads_indel %>%
+          .[which(.$exp_indel==TRUE),] %>%
+          .$indel_qual #%>%
+        #lapply(ascii_to_dec) %>%
+        #unlist() 
+        #print(2)
+        gtl_eps_l_raw <- all_reads_indel %>%
+          .[which(.$exp_indel==FALSE),] %>%
+          .$indel_qual #%>%
+        #lapply(ascii_to_dec) %>%
+        #unlist() 
+        print(gtl_eps_v)
+        print(gtl_eps_l_raw)
+      }      ## we defined v as k-l from genotype likelihood function
+      
+      #therefore, the adjustment factor must be defined
+      n_reference_reads_to_use <- round(length(gtl_eps_v)*((rel_mut$tcn/rel_mut$aff_cp)-1))
+      mx_n <- min(n_reference_reads_to_use, length(gtl_eps_l_raw))
+      ## to stay most restrictive, we only use the n_reference reads wich have the lowest basecall qualities
+      #print(mx_n)
+      gtl_eps_l <- sort(gtl_eps_l_raw, decreasing = FALSE)[seq(1,mx_n,1)]
+      ## calc for both genotypes from here
+      
+      
+      
+      prob_per_gt <- lapply(allele_specific_genotype, function(gtl_g){
+        #print(gtl_g)
+        
+        gtl_prod_ref <- unlist(lapply(gtl_eps_l, function(E){
+          (gtl_m-gtl_g)*E+gtl_g*(1-E)
+        })) %>%
+          prod()
+        gtl_prod_alt <- unlist(lapply(gtl_eps_v, function(E){
+          (gtl_m-gtl_g)*(1-E)+gtl_g*E
+        })) %>%
+          prod()
+        genotype_likelihood <- (1/(gtl_m^gtl_k))*gtl_prod_ref*gtl_prod_alt   
+        return(c(gt=gtl_g, lklhd=genotype_likelihood, prod_ref=gtl_prod_ref, prod_alt=gtl_prod_alt))
+      }) %>%
+        bind_rows() %>%
+        mutate(mut_id=MUT) %>%
+        return()
     } else {
-      
-      all_reads_indel <- all_reads %>%
-        mutate(indel_qual=10^(as.numeric(mapq)/(-10)))
-      
-      #print(all_reads_indel)
-      gtl_eps_v <- all_reads_indel %>%
-        .[which(.$exp_indel==TRUE),] %>%
-        .$indel_qual #%>%
-      #lapply(ascii_to_dec) %>%
-      #unlist() 
-      #print(2)
-      gtl_eps_l_raw <- all_reads_indel %>%
-        .[which(.$exp_indel==FALSE),] %>%
-        .$indel_qual #%>%
-      #lapply(ascii_to_dec) %>%
-      #unlist() 
-      print(gtl_eps_v)
-      print(gtl_eps_l_raw)
+      warning("Genotype-likelihood can not be determined as provided bam file has no reads in the area of the variant")
+      return(NULL)
     }
     
-    ## we defined v as k-l from genotype likelihood function
-    
-    #therefore, the adjustment factor must be defined
-    n_reference_reads_to_use <- round(length(gtl_eps_v)*((rel_mut$tcn/rel_mut$aff_cp)-1))
-    mx_n <- min(n_reference_reads_to_use, length(gtl_eps_l_raw))
-    ## to stay most restrictive, we only use the n_reference reads wich have the lowest basecall qualities
-    #print(mx_n)
-    gtl_eps_l <- sort(gtl_eps_l_raw, decreasing = FALSE)[seq(1,mx_n,1)]
-    ## calc for both genotypes from here
-    
-    
-    
-    prob_per_gt <- lapply(allele_specific_genotype, function(gtl_g){
-      #print(gtl_g)
-      
-      gtl_prod_ref <- unlist(lapply(gtl_eps_l, function(E){
-        (gtl_m-gtl_g)*E+gtl_g*(1-E)
-      })) %>%
-        prod()
-      gtl_prod_alt <- unlist(lapply(gtl_eps_v, function(E){
-        (gtl_m-gtl_g)*(1-E)+gtl_g*E
-      })) %>%
-        prod()
-      genotype_likelihood <- (1/(gtl_m^gtl_k))*gtl_prod_ref*gtl_prod_alt   
-      return(c(gt=gtl_g, lklhd=genotype_likelihood, prod_ref=gtl_prod_ref, prod_alt=gtl_prod_alt))
     }) %>%
-      bind_rows() %>%
-      mutate(mut_id=MUT) %>%
-      return()
-  }) %>%
-    bind_rows()
+      bind_rows() 
+    
   func_end()
   return(gt_lk_per_mut)
 }
@@ -1064,26 +1073,26 @@ perform_copy_number_phasing <- function(df_gene, copyNumberPhasing, bamDna){
             gt_lk_per_mut <- calc_genotype_likelihood_per_mut(variants_in_segment, 
                                                               allele_specific_genotype, bamDna)
             
+            if(nrow(gt_lk_per_mut)>0){
+              ## can be zero if bam file does not cover variant  
+              mut_template <- make_mut_template(variants_in_segment)
             
-            mut_template <- make_mut_template(variants_in_segment)
-            
-            aggregated_likelihoods <- aggregate_likelihoods(mut_template, gt_lk_per_mut, allele_specific_genotype)
-            
-            copy_number_phasing <- aggregated_likelihoods %>%
-              rowwise() %>%
-              mutate(
-                comb=get_single_index(as.numeric(unlist(str_replace(mut_id2, "m", ""))), 
-                                      as.numeric(unlist(str_replace(mut_id1, "m", ""))), 
-                                      nrow(global_ZygosityPredictor_variable_mat_phased)),
-                phasing=paste0("som-s", SEG_ID),
-                nconst=case_when(
-                  as.numeric(p_same)>=as.numeric(p_diff) ~ 1,
-                  as.numeric(p_diff)>as.numeric(p_same) ~ 2
-                ),
-                conf=max(as.numeric(p_diff),as.numeric(p_same))
-                
-              )
-            
+              aggregated_likelihoods <- aggregate_likelihoods(mut_template, gt_lk_per_mut, allele_specific_genotype)
+              
+              copy_number_phasing <- aggregated_likelihoods %>%
+                rowwise() %>%
+                mutate(
+                  comb=get_single_index(as.numeric(unlist(str_replace(mut_id2, "m", ""))), 
+                                        as.numeric(unlist(str_replace(mut_id1, "m", ""))), 
+                                        nrow(global_ZygosityPredictor_variable_mat_phased)),
+                  phasing=paste0("som-s", SEG_ID),
+                  nconst=case_when(
+                    as.numeric(p_same)>=as.numeric(p_diff) ~ 1,
+                    as.numeric(p_diff)>as.numeric(p_same) ~ 2
+                  ),
+                  conf=max(as.numeric(p_diff),as.numeric(p_same))
+                  
+                )   
             
             ## define inputs for genotype likelyhood
             ## m = ploidy, so probably tcn
@@ -1092,9 +1101,10 @@ perform_copy_number_phasing <- function(df_gene, copyNumberPhasing, bamDna){
             ## k = number of reads
             ## l = reads supp reference
             ## k-l = reads supporting variant
-            
-            
-                  
+            }else {
+              ## bam file doesnot cover variants
+              copy_number_phasing <- NULL
+            }
           } else {
             copy_number_phasing <- NULL
           }
@@ -1198,6 +1208,7 @@ phase <- function(df_gene,
   store_log(geneDir, as_tibble(global_ZygosityPredictor_variable_mat_phased), "mat_phased.tsv")
   store_log(geneDir, as_tibble(global_ZygosityPredictor_variable_mat_info), "mat_info.tsv")
   func_end()
+  #print(phasing_all_combs)
   return(list(phasing_all_combs, 
               read_level_phasing_info_export, 
               global_ZygosityPredictor_variable_mat_phased, 

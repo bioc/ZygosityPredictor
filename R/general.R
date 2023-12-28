@@ -714,6 +714,7 @@ predict_zygosity_genewise <- function(GENE,
         mutate(gene=GENE)
       eval_for_gene <- eval_phasing_new(all_comb, df_gene,  
                                     printLog)
+      #print(full_phasing_result)
       read_level_phasing_info <- full_phasing_result[[2]] %>%
         mutate(gene=GENE)
       copy_number_phasing_info <- full_phasing_result[[5]] %>%

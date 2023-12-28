@@ -540,7 +540,8 @@ predict_zygosity <- function(purity,
   status <- info <- wt_cp <- . <- df_homdels <- evaluation_per_variant <- 
     gene <- final_phasing_info <- combined_read_details <-  final_output <-
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
-    som_covered <- germ_covered <- final_phasing_info <- 
+    som_covered <- germ_covered <- final_phasing_info <- detailed_read_level_phasing_info <- 
+    detailed_copy_number_phasing_info <- 
     combined_snp_phasing <- evaluation_per_gene <- log_list_per_gene <- 
     detailed_phasing_info <- comb_mat_phased <- comb_mat_info <- 
     combined_eval_per_gene <- full_phasing_info <- NULL
