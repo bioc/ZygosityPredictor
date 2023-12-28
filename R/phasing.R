@@ -240,7 +240,7 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
         filter(mut_id %in% comb_vec)
     min_tcn=min(df_gene_relcomb$tcn)
     nconst <- global_ZygosityPredictor_variable_mat_phased[mmp]
-    status <- get_string_const(nconst)      
+    const <- get_string_const(nconst)      
     min_poss_wt_cp=calc_left_wt_copies(min_tcn,
                                          2,
                                          df_gene_relcomb$aff_cp[1],
@@ -305,7 +305,7 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
         TRUE ~ NA
       )
     }
-    phasing_status <- tibble(comb=comb, nconst=nconst, status=status, 
+    phasing_status <- tibble(comb=comb, nconst=nconst, const=const, 
                              phasing=phasing, via=via, conf=conf, 
                              unplausible=unplausible,
                              subclonal=subclonal, wt_cp=wt_cp, 
@@ -315,7 +315,7 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
     return(phasing_status)
   }) %>%
     bind_rows()  %>%
-    select(comb, nconst, status, phasing, via, conf, unplausible, subclonal, 
+    select(comb, nconst, const, phasing, via, conf, unplausible, subclonal, 
            wt_cp, min_poss_wt_cp, max_poss_wt_cp, score)
   func_end()
   return(phasing_all_combs)
@@ -380,7 +380,7 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
     pull(prob_sum)
   append_loglist(print_tibble(relevant_for_decision))
   ## predefine null result if no evidence
-  status <- "null"
+  const <- "null"
   p <- 1
   xsq_same <- xsq_diff <- p_diff <- p_same <- v_same <- v_diff <- NA
   nconst <- evidence <- certainty <- confidence <- conf_log <- 0
@@ -413,10 +413,10 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
     v_diff <- sqrt(xsq_diff/sum(sum_rel, exp_diff$exp))
     v_same <- sqrt(xsq_same/sum(sum_rel, exp_same$exp))
     if(p_diff>p_same){
-      status <- "diff"
+      const <- "diff"
       nconst <- 2
     } else {
-      status <- "same"
+      const <- "same"
       nconst <- 1
     }  
   }
@@ -439,7 +439,7 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
     dev_var=number[['dev_var']],
     skipped=sum(as.numeric(number[['read_in_read']]), 
                    as.numeric(number[['skipped']])),
-    status=status,
+    const=const,
     nconst=nconst,
     xsq_same=xsq_same,
     xsq_diff=xsq_diff,
@@ -609,7 +609,7 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna,
   func_start()
   append_loglist("Phasing:", comb)
   ## predefine empty output
-  classified_main_comb <- tibble(comb=comb, status="null", nconst=0, conf=0,
+  classified_main_comb <- tibble(comb=comb, const="null", nconst=0, conf=0,
                                  phasing=comb)
   ## define relevant properties for mut1 and mut2 globally for the phasing process
   mut1 <- 2
@@ -962,8 +962,8 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
           .$indel_qual #%>%
         #lapply(ascii_to_dec) %>%
         #unlist() 
-        print(gtl_eps_v)
-        print(gtl_eps_l_raw)
+       #print(gtl_eps_v)
+       #print(gtl_eps_l_raw)
       }      ## we defined v as k-l from genotype likelihood function
       
       #therefore, the adjustment factor must be defined
@@ -1052,9 +1052,9 @@ aggregate_likelihoods <- function(mut_template, gt_lk_per_mut, allele_specific_g
   func_end()
   return(aggregated_likelihoods)
 }
-perform_copy_number_phasing <- function(df_gene, copyNumberPhasing, bamDna){
+perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna){
   func_start()
-  if(copyNumberPhasing){
+  if(AllelicImbalancePhasing){
   ## works only if both variants are in the same segment
     per_segment <- lapply(unique(df_gene$seg_id), function(SEG_ID){
       
@@ -1121,12 +1121,12 @@ perform_copy_number_phasing <- function(df_gene, copyNumberPhasing, bamDna){
       bind_rows()
     #print(per_segment)
     append_matrices(per_segment)
-    # print(global_ZygosityPredictor_variable_mat_phased)
-    # print(global_ZygosityPredictor_variable_mat_info)
+    ##print(global_ZygosityPredictor_variable_mat_phased)
+    ##print(global_ZygosityPredictor_variable_mat_info)
   ## output needs this:
   ##  status nconst p_same p_diff subclonal unplausible  dist class_comb  comb phasing
   } else {
-    per_segment <- NULL
+    per_segment <- tibble()
   }
   func_end()
   return(per_segment)
@@ -1151,7 +1151,7 @@ phase <- function(df_gene,
                   showReadDetail=FALSE, 
                   snpQualityCutOff=1, 
                   phasingMode="full",
-                  copyNumberPhasing=FALSE, 
+                  AllelicImbalancePhasing=FALSE, 
                   verbose=FALSE){
   #vm(as.character(sys.call()[1]),  1)
   func_start()
@@ -1164,6 +1164,8 @@ phase <- function(df_gene,
   ## (2): perform direct phasing between variants (read-based)
   direct_phasing <- perform_direct_phasing(df_gene, bamDna, bamRna, printLog, 
                                            showReadDetail, geneDir)
+ #print(0)
+ #print(df_gene)
   read_level_phasing_info <- perform_indirect_phasing(df_gene, vcf, bamDna, bamRna, 
                                            haploBlocks,  distCutOff, somCna, 
                                            snpQualityCutOff, purity, sex, 
@@ -1171,11 +1173,11 @@ phase <- function(df_gene,
                                            showReadDetail)
   
   
-  copy_number_phasing <- perform_copy_number_phasing(df_gene, copyNumberPhasing, bamDna)
+  copy_number_phasing <- perform_copy_number_phasing(df_gene, AllelicImbalancePhasing, bamDna)
   
   # if(nrow(copy_number_phasing)>0){
-  #   print(basename(geneDir))
-  #   print(copy_number_phasing)    
+  #  #print(basename(geneDir))
+  #  #print(copy_number_phasing)    
   # }
 
   ## indirect phasing done
@@ -1184,6 +1186,8 @@ phase <- function(df_gene,
   global_ZygosityPredictor_variable_main_pos <- get_main_mut_pos()
   uppertri <- which(upper.tri(global_ZygosityPredictor_variable_mat_phased))
   all_combs <- intersect(global_ZygosityPredictor_variable_main_pos, uppertri)
+ #print(1)
+ #print(read_level_phasing_info)
   phasing_all_combs <- aggregate_phasing(all_combs, df_gene, read_level_phasing_info, copy_number_phasing)
  if(nrow(read_level_phasing_info)==0){
    read_level_phasing_info_export <- tibble()
@@ -1207,8 +1211,8 @@ phase <- function(df_gene,
   }
   store_log(geneDir, as_tibble(global_ZygosityPredictor_variable_mat_phased), "mat_phased.tsv")
   store_log(geneDir, as_tibble(global_ZygosityPredictor_variable_mat_info), "mat_info.tsv")
+ #print(phasing_all_combs)
   func_end()
-  #print(phasing_all_combs)
   return(list(phasing_all_combs, 
               read_level_phasing_info_export, 
               global_ZygosityPredictor_variable_mat_phased, 
@@ -1265,8 +1269,8 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in,  which="all",
                       paste0("chr", chrom))
   gr_list <- lapply(vcf_in, function(VCF){
     if(is(VCF, "TabixFile")){
-      #if(chrom %in% Rsamtools::seqnamesTabix(VCF)){
-      if(chrom %in% seqnamesTabix(VCF)){
+      if(chrom %in% Rsamtools::seqnamesTabix(VCF)){
+      #if(chrom %in% seqnamesTabix(VCF)){
         loadedVcf <- 
           readVcf(VCF, 
                   param=region_to_load)

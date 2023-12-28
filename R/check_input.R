@@ -424,7 +424,7 @@ check_vcf <- function(vcf){
   } else {
     processed_vcf <- lapply(vcf, function(VCF){
       if(file.exists(paste0(VCF, ".tbi"))){
-        return(TabixFile(VCF))
+        return(Rsamtools::TabixFile(VCF))
       } else {
         return(VCF)
       }

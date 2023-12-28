@@ -28,22 +28,51 @@ gene_ov <- function(fp, inp_gene, n=20){
       filter(gene==inp_gene) %>%
       mutate_at(.vars=c("conf", "wt_cp", "min_poss_wt_cp", "max_poss_wt_cp"),
                 .funs=round, 2) %>% 
-      arrange(desc(nstatus), desc(conf))
-    detailed <- fp$detailed_phasing_info %>% 
-      filter(gene==inp_gene) %>%
-      select(-conf, -xsq_diff, -xsq_same, -v_same, -v_diff, -phasing) %>%
-      mutate_at(.vars=c("mut2", "mut1", "both", "p_same",    "p_diff"),
-                .funs=round, 2) %>%
-      arrange(desc(nstatus))
-    
-    if(nrow(detailed)<n){
-      n <- nrow(detailed)
+      arrange(desc(nconst), desc(conf))
+    if(!is.null(fp$detailed_RLP_info)){
+      detailed_RLP <- fp$detailed_RLP_info %>% 
+        filter(gene==inp_gene) %>%
+        select(-conf, -xsq_diff, -xsq_same, -v_same, -v_diff, -phasing) %>%
+        mutate_at(.vars=c("mut2", "mut1", "both", "p_same",    "p_diff"),
+                  .funs=round, 2) %>%
+        arrange(desc(nconst))   
+      if(nrow(detailed_RLP)<n){
+        n_RLP <- nrow(detailed_RLP)
+      } else {
+        n_RLP <- n
+      }  
+      RLP_mes <- paste(c("\n\nSub level: All read-level-phasing combinations, including SNPs\n", "Showing ", n_RLP, " of ", nrow(detailed_RLP), " phasing attempts\n\n",
+          print_tibble(detailed_RLP[1:n_RLP,]), "\n"), collapse="")
+    } else {
+      RLP_mes <- ""
+    }
+    if(!is.null(fp$detailed_AIP_info)){
+      detailed_AIP <- fp$detailed_AIP_info %>% 
+        filter(gene==inp_gene) %>%
+        #select(-conf, -xsq_diff, -xsq_same, -v_same, -v_diff, -phasing) %>%
+        # mutate_at(.vars=c("p_same",    "p_diff"),
+        #           .funs=round, 2) %>%
+        arrange(desc(nconst))
+  
+      if(nrow(detailed_AIP)<n){
+        n_AIP <- nrow(detailed_AIP)
+      } else {
+        n_AIP <- n
+      }
+      AIP_mes <- paste(c("\n\nSub level: All allelic-imbalance-phasing combinations, including SNPs\n", "Showing ", n_AIP, " of ", nrow(detailed_RLP), " phasing attempts\n\n",
+                         print_tibble(detailed_RLP[1:n_AIP,]), "\n"), collapse="")
+    } else {
+      AIP_mes <- ""
     }
     if(nrow(phasing_info)>0){
       message("\n\nSub level: Main phasing combinations\n")
       message(print_tibble(phasing_info))
-      message("\n\nSub level: All phasing combinations, including SNPs\n", "Showing ", n, " of ", nrow(detailed), " phasing attempts\n")
-      message(print_tibble(detailed[1:n,]))
+      message(RLP_mes)
+      message(AIP_mes)
+      # message("\n\nSub level: All read-level-phasing combinations, including SNPs\n", "Showing ", n, " of ", nrow(detailed_RLP), " phasing attempts\n")
+      # message(print_tibble(detailed_RLP[1:n,]))
+      # message("\n\nSub level: All allelic-imbalance-phasing combinations, including SNPs\n", "Showing ", n, " of ", nrow(detailed_AIP), " phasing attempts\n")
+      # message(print_tibble(detailed_AIP[1:n,]))
     }
   }
 
@@ -75,7 +104,7 @@ ZP_ov <- function(fp){
     }
     if(!is.null(fp$phasing_info)){
       phased_genes <- fp$phasing_info %>%
-        filter(nstatus>0) %>% pull(gene) %>%
+        filter(nconst>0) %>% pull(gene) %>%
       
         unique() %>% sort %>% paste(collapse = ", ")
     }
@@ -398,6 +427,7 @@ predict_per_variant <- function(purity,
 #' excluded
 #' @param includeIncompleteDel default = TRUE; if FALSE heterzygous deleteions 
 #' are excluded
+#' @param AllelicImbalancePhasing logical, default=FALSE. Enables alleleic imbalance phasing if TRUE
 #' @param printLog default = FALSE; if TRUE the gene which is evaluated is 
 #' printed in console, 
 #' containing the query-name of each read which was used to perform 
@@ -535,13 +565,13 @@ predict_zygosity <- function(purity,
                              logDir=NULL,
                              snpQualityCutOff=1, 
                              phasingMode="fast",
-                             copyNumberPhasing=FALSE
+                             AllelicImbalancePhasing=FALSE
 ){
   status <- info <- wt_cp <- . <- df_homdels <- evaluation_per_variant <- 
     gene <- final_phasing_info <- combined_read_details <-  final_output <-
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
-    som_covered <- germ_covered <- final_phasing_info <- detailed_read_level_phasing_info <- 
-    detailed_copy_number_phasing_info <- 
+    som_covered <- germ_covered <- final_phasing_info <- detailed_RLP_info <- 
+    detailed_AIP_info <- 
     combined_snp_phasing <- evaluation_per_gene <- log_list_per_gene <- 
     detailed_phasing_info <- comb_mat_phased <- comb_mat_info <- 
     combined_eval_per_gene <- full_phasing_info <- NULL
@@ -592,17 +622,17 @@ predict_zygosity <- function(purity,
         somCna,
         snpQualityCutOff, 
         phasingMode,
-        copyNumberPhasing)
+        AllelicImbalancePhasing)
       full_eval_per_gene <- lapply(per_gene, nth, n=2) %>% compact()
       log_list_per_gene <- lapply(per_gene, nth, n=3)
       if(length(full_eval_per_gene)!=0){
         full_phasing_info <- lapply(full_eval_per_gene, nth, n=2) %>% 
           compact() %>% 
           bind_rows() 
-        detailed_read_level_phasing_info <- lapply(full_eval_per_gene, nth, n=3) %>% 
+        detailed_RLP_info <- lapply(full_eval_per_gene, nth, n=3) %>% 
           compact() %>% 
           bind_rows() 
-        detailed_copy_number_phasing_info <- lapply(full_eval_per_gene, nth, n=6) %>% 
+        detailed_AIP_info <- lapply(full_eval_per_gene, nth, n=6) %>% 
           compact() %>% 
           bind_rows() 
         comb_mat_phased <- lapply(full_eval_per_gene, nth, n=4) %>%
@@ -630,8 +660,8 @@ predict_zygosity <- function(purity,
     phasing_info=full_phasing_info,
     uncovered_input=evaluation_per_variant_pre$combined_uncovered,
     log_list_per_gene=log_list_per_gene,
-    detailed_read_level_phasing_info=detailed_read_level_phasing_info,
-    detailed_copy_number_phasing_info=detailed_copy_number_phasing_info,
+    detailed_RLP_info=detailed_RLP_info,
+    detailed_AIP_info=detailed_AIP_info,
     mat_phased=comb_mat_phased,
     mat_info=comb_mat_info
   ) %>%

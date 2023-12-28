@@ -30,7 +30,7 @@ predict_zygosity(
   logDir = NULL,
   snpQualityCutOff = 1,
   phasingMode = "fast",
-  copyNumberPhasing = FALSE
+  AllelicImbalancePhasing = FALSE
 )
 }
 \arguments{

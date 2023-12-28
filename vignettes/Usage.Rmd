@@ -280,6 +280,10 @@ five classes:
   depending on the research question.
   + **includeHomoDel**: logical, default=TRUE; Should homozygous deletions be 
   included in the evaluation?
+  + **AllelicImbalancePhasing**: logical, default=FALSE; If TRUE, performs (if
+  read-level phasing fails) alleleic imbalance phasing. Results must be seen 
+  with caution as for somatic variants incorrect constellations might be 
+  determined.
   + **showReadDetail**: logical, default=FALSE; If this option is TRUE, another 
   table is added to the output that contains more detailed information about 
   the classification of the read pairs. More detailed information is provided 

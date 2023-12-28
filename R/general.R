@@ -662,7 +662,7 @@ predict_zygosity_genewise <- function(GENE,
                                       somCna, 
                                       snpQualityCutOff, 
                                       phasingMode,
-                                      copyNumberPhasing){
+                                      AllelicImbalancePhasing){
   #func_start()
   vm("predict_zygosity_genewise", 1) ## do not replcae!!!
   start_gene_eval <- Sys.time()
@@ -680,6 +680,9 @@ predict_zygosity_genewise <- function(GENE,
   df_gene_raw <- remove_duplicated_variants(pre_df_gene)
   df_gene <- df_gene_raw %>%
     filter(vn_status>=0)
+ #print(10)
+ #print(df_gene_raw)
+ #print(df_gene)
   ## check if variants remain in that gene
   if(nrow(df_gene)==0){
     eval_for_gene <- eval_lost_in_tumor(df_gene_raw, printLog)
@@ -709,7 +712,8 @@ predict_zygosity_genewise <- function(GENE,
                                    haploBlocks, vcf, distCutOff, printLog,
                                    geneDir, showReadDetail, 
                                    snpQualityCutOff, phasingMode, 
-                                   copyNumberPhasing)
+                                   AllelicImbalancePhasing)
+     #print(full_phasing_result)
       all_comb <- full_phasing_result[[1]] %>%
         mutate(gene=GENE)
       eval_for_gene <- eval_phasing_new(all_comb, df_gene,  
@@ -719,6 +723,9 @@ predict_zygosity_genewise <- function(GENE,
         mutate(gene=GENE)
       copy_number_phasing_info <- full_phasing_result[[5]] %>%
         mutate(gene=GENE)
+      if(nrow(copy_number_phasing_info)==0){
+        copy_number_phasing_info <- NULL
+      }
       store_log(geneDir, read_level_phasing_info, "all_phasing_combinations.tsv")
       store_log(geneDir, copy_number_phasing_info, "all_phasing_combinations.tsv")
       mat_phased_gene <- list()
