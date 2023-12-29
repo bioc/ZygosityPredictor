@@ -32,6 +32,7 @@ Imports:
     knitr,
     igraph,
     readr,
+    stats,
     magrittr,
     rlang
 License: GPL-2
@@ -40,7 +41,7 @@ RoxygenNote: 7.2.3
 Encoding: UTF-8
 biocViews: BiomedicalInformatics, FunctionalPrediction, SomaticMutation, GenePrediction
 Depends: 
-    R (>= 4.2.0)
+    R (>= 4.3.0)
 LazyData: false
 Suggests: 
     rmarkdown,

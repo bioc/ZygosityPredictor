@@ -143,6 +143,8 @@ can be used for phasing}
 \item{phasingMode}{character, default="fast"; if set to full. Even if high 
 confidence phasing result could be achieved, following phasing approaches 
 will be carried out}
+
+\item{AllelicImbalancePhasing}{logical, default=FALSE. Enables alleleic imbalance phasing if TRUE}
 }
 \value{
 A list of dataframes. Those are the evaluation per variant, 

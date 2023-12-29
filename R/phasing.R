@@ -187,7 +187,7 @@ prioritize_combination <- function(){
   relevant_dists[which(relevant_dists==0)] <- NA
   ## to suppress warning: Warning: no non-missing arguments to min; returning Inf
   suppressWarnings(
-    shortest <- unphased[which(relevant_dists==min(relevant_dists, na.rm=T))] 
+    shortest <- unphased[which(relevant_dists==min(relevant_dists, na.rm=TRUE))] 
   )
   ## pick first one, if two have the same distance
   if(length(shortest)==0){
@@ -238,14 +238,14 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
     comb <- comb_vec %>% paste(collapse="-")    
     df_gene_relcomb <- df_gene %>%
         filter(mut_id %in% comb_vec)
-    min_tcn=min(df_gene_relcomb$tcn)
+    min_tcn <- min(df_gene_relcomb$tcn)
     nconst <- global_ZygosityPredictor_variable_mat_phased[mmp]
     const <- get_string_const(nconst)      
-    min_poss_wt_cp=calc_left_wt_copies(min_tcn,
+    min_poss_wt_cp <- calc_left_wt_copies(min_tcn,
                                          2,
                                          df_gene_relcomb$aff_cp[1],
                                          df_gene_relcomb$aff_cp[2])
-    max_poss_wt_cp=calc_left_wt_copies(min_tcn,
+    max_poss_wt_cp <- calc_left_wt_copies(min_tcn,
                                          1,
                                          df_gene_relcomb$aff_cp[1],
                                          df_gene_relcomb$aff_cp[2])
@@ -267,7 +267,7 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
         unplausible <- paste(as.numeric(extracted_combs$unplausible), collapse="-")
         subclonal <- paste(as.numeric(extracted_combs$subclonal), collapse="-")
         
-        phasing=case_when(
+        phasing <- case_when(
           str_detect(global_ZygosityPredictor_variable_mat_info[mmp], "h") ~ "haploblock-phasing",
           #str_detect(global_ZygosityPredictor_variable_mat_info[mmp], "s") ~ "imbalance",
           str_detect(global_ZygosityPredictor_variable_mat_info[mmp], "-") ~ "indirect-phasing",
@@ -685,7 +685,7 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
     })
     #print(global_ZygosityPredictor_variable_mat_phased)
     if(iterate==TRUE){
-      something_changed <- sum(mat_old, na.rm = T)!=sum(global_ZygosityPredictor_variable_mat_phased, na.rm = T)
+      something_changed <- sum(mat_old, na.rm = TRUE)!=sum(global_ZygosityPredictor_variable_mat_phased, na.rm = TRUE)
       mat_new <- global_ZygosityPredictor_variable_mat_phased
       mat_new[is.na(mat_new)] <- 0
       mat_old[is.na(mat_old)] <- 0
@@ -879,7 +879,7 @@ custom_readGalign <- function(bamDna, ref_gr, first){
       which=ref_gr,
       what=c("qname","seq", "cigar", "mapq", "qual")
     ))    %>%
-    GenomicAlignments::granges(use.mcols = T)
+    GenomicAlignments::granges(use.mcols = TRUE)
   func_end()
   return(loaded)
 }
@@ -912,6 +912,36 @@ load_covering_reads <- function(ref_gr, rel_mut, bamDna){
 
   func_end()
   return(all_reads)
+}
+formula_genotype_likelihood <- function(gtl_g, 
+                                        gtl_eps_l,
+                                        gtl_eps_v,
+                                        gtl_m,
+                                        gtl_k){
+  # print("epsilon_l:")
+  # print(gtl_eps_l)
+  # print("epsilon_v:")
+  # print(gtl_eps_v)
+  # print("m:")
+  # print(gtl_m)
+  # print("k")
+  # print(gtl_k)
+  # print("g")
+  # print(gtl_g)
+  #lapply(allele_specific_genotype, function(gtl_g){
+    gtl_prod_ref <- unlist(lapply(gtl_eps_l, function(E){
+      (gtl_m-gtl_g)*E+gtl_g*(1-E)
+    })) %>%
+      prod()
+    gtl_prod_alt <- unlist(lapply(gtl_eps_v, function(E){
+      (gtl_m-gtl_g)*(1-E)+gtl_g*E
+    })) %>%
+      prod()
+    genotype_likelihood <- (1/(gtl_m^gtl_k))*gtl_prod_ref*gtl_prod_alt   
+    return(c(gt=gtl_g, lklhd=genotype_likelihood, prod_ref=gtl_prod_ref, prod_alt=gtl_prod_alt))
+  #}) %>%
+    #bind_rows() %>%
+    #return()
 }
 calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specific_genotype, bamDna){
   func_start()
@@ -977,22 +1007,17 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
       
       
       prob_per_gt <- lapply(allele_specific_genotype, function(gtl_g){
-        #print(gtl_g)
-        
-        gtl_prod_ref <- unlist(lapply(gtl_eps_l, function(E){
-          (gtl_m-gtl_g)*E+gtl_g*(1-E)
-        })) %>%
-          prod()
-        gtl_prod_alt <- unlist(lapply(gtl_eps_v, function(E){
-          (gtl_m-gtl_g)*(1-E)+gtl_g*E
-        })) %>%
-          prod()
-        genotype_likelihood <- (1/(gtl_m^gtl_k))*gtl_prod_ref*gtl_prod_alt   
-        return(c(gt=gtl_g, lklhd=genotype_likelihood, prod_ref=gtl_prod_ref, prod_alt=gtl_prod_alt))
+        formula_genotype_likelihood( gtl_g,
+                                     gtl_eps_l,
+                                     gtl_eps_v,
+                                                 gtl_m,
+                                                 (length(gtl_eps_l)+length(gtl_eps_v))) %>%
+          bind_rows() %>%
+          return()
       }) %>%
         bind_rows() %>%
-        mutate(mut_id=MUT) %>%
-        return()
+        mutate(mut_id=MUT) 
+      return(prob_per_gt)
     } else {
       warning("Genotype-likelihood can not be determined as provided bam file has no reads in the area of the variant")
       return(NULL)
@@ -1015,7 +1040,7 @@ make_mut_template <- function(variants_in_segment){
       } else {
         return(sorted)
       }
-    }, simplify=F) %>%
+    }, simplify=FALSE) %>%
     compact() %>%
     unique() %>%
     lapply(.,set_names, nm=c("mut_id1", "mut_id2"))
@@ -1632,8 +1657,8 @@ parse_cigar <- function(bam, qname, paired){
   
   ## parse cigar string according to query
   ## from here for devel
-  cigq <- GenomicAlignments::cigarRangesAlongQuerySpace(cigar, with.ops = T) 
-  cigr <- GenomicAlignments::cigarRangesAlongReferenceSpace(cigar, with.ops = F) 
+  cigq <- GenomicAlignments::cigarRangesAlongQuerySpace(cigar, with.ops = TRUE) 
+  cigr <- GenomicAlignments::cigarRangesAlongReferenceSpace(cigar, with.ops = FALSE) 
   ## from here for bioconductor
   #cigq <- cigarRangesAlongQuerySpace(cigar, with.ops = T) 
   #cigr <- cigarRangesAlongReferenceSpace(cigar, with.ops = F) 
@@ -1656,12 +1681,12 @@ parse_cigar <- function(bam, qname, paired){
     qualq <- str_sub(qual[i],
                      start=cigq_start,
                      end=cigq_end) %>% na_if("")
-    width=pmax(GenomicAlignments::width(cigq[[i]]),
+    width <- pmax(GenomicAlignments::width(cigq[[i]]),
                GenomicAlignments::width(cigr[[i]]))
     # width=pmax(width(cigq[[i]]), 
     #            width(cigr[[i]]))
-    map_start=read_start[i]+cigr_end-width
-    map_end=read_start[i]+cigr_end-1
+    map_start <- read_start[i]+cigr_end-width
+    map_end <- read_start[i]+cigr_end-1
     raw_cigs_new <- data.frame(
       width=width,
       type=names(cigq[[i]]),

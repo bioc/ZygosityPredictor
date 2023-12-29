@@ -59,8 +59,8 @@ gene_ov <- function(fp, inp_gene, n=20){
       } else {
         n_AIP <- n
       }
-      AIP_mes <- paste(c("\n\nSub level: All allelic-imbalance-phasing combinations, including SNPs\n", "Showing ", n_AIP, " of ", nrow(detailed_RLP), " phasing attempts\n\n",
-                         print_tibble(detailed_RLP[1:n_AIP,]), "\n"), collapse="")
+      AIP_mes <- paste(c("\n\nSub level: All allelic-imbalance-phasing combinations, including SNPs\n", "Showing ", n_AIP, " of ", nrow(detailed_AIP), " phasing attempts\n\n",
+                         print_tibble(detailed_AIP[1:n_AIP,]), "\n"), collapse="")
     } else {
       AIP_mes <- ""
     }
@@ -233,6 +233,7 @@ aff_som_copies <- function(chr, af, tcn, purity, sex, c_normal=NULL){
 #' If not provided the tool tries to detect the column according to default 
 #' names
 #' @param verbose logical, default=FALSE; prints functions that are called
+#' @return A list containing tibbles with all input variants
 #' @importFrom IRanges subsetByOverlaps
 #' @export
 #' @examples 
