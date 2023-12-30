@@ -233,6 +233,7 @@ prioritize_combination <- function(){
 #' @importFrom dplyr bind_rows left_join select filter
 aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_number_phasing=NULL){
   func_start()
+  #print(all_combs)
   phasing_all_combs <- lapply(all_combs, function(mmp){
     comb_vec <- paste0("m",sort(get_xy_index(mmp, nrow(global_ZygosityPredictor_variable_mat_phased))))
     comb <- comb_vec %>% paste(collapse="-")    
@@ -249,7 +250,14 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
                                          1,
                                          df_gene_relcomb$aff_cp[1],
                                          df_gene_relcomb$aff_cp[2])
-    #print(global_ZygosityPredictor_variable_mat_phased)
+    # print(global_ZygosityPredictor_variable_mat_phased)
+    # print(mmp)
+    # print(nconst)
+    ## gescheit machen irgendwann
+    if(is.na(nconst)){
+      nconst <- 0
+    }
+    
     if(nconst>0){
       ## status was defined
       ## calculate confidence
@@ -301,7 +309,7 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
         TRUE ~ 0
       )
       phasing <- case_when(
-        score==1 ~ "exclusion",
+        score==1 ~ "insufficient",
         TRUE ~ NA
       )
     }
@@ -943,7 +951,25 @@ formula_genotype_likelihood <- function(gtl_g,
     #bind_rows() %>%
     #return()
 }
-calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specific_genotype, bamDna){
+
+adjust_n_reference_reads_somatic <- function(a, c_tum, ac_tum){
+  
+  n_ref_adj <- a*((c_tum/ac_tum)-1)
+  
+  rounded <- round(n_ref_adj)
+  return(rounded)
+}
+
+adjust_n_reference_reads_germline <- function(r, p, c_tum, c_norm, VAF_norm, VAF_tum){
+  
+  
+  n_ref_adj <- r*(-((p-1)/c_tum))/((((p/c_norm)-((p-1)/c_tum))*VAF_norm*VAF_tum)/(VAF_norm-1)    +  (((p-1)/c_tum)-(p/c_norm))*VAF_tum)
+  return(round(n_ref_adj))
+}
+
+
+
+calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specific_genotype, bamDna, purity, sex){
   func_start()
   gt_lk_per_mut <- lapply(variants_in_segment$mut_id, function(MUT){
     ## test gpt fucntion
@@ -963,7 +989,7 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
     
     if(!is.null(all_reads)){
       if(rel_mut$class=="snv"){
-        gtl_eps_v <- all_reads %>%
+        gtl_eps_v_raw <- all_reads %>%
           .[which(.$base==rel_mut$alt),] %>%
           .$qual %>%
           lapply(ascii_to_dec) %>%
@@ -981,7 +1007,7 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
           mutate(indel_qual=10^(as.numeric(mapq)/(-10)))
         
         #print(all_reads_indel)
-        gtl_eps_v <- all_reads_indel %>%
+        gtl_eps_v_raw <- all_reads_indel %>%
           .[which(.$exp_indel==TRUE),] %>%
           .$indel_qual #%>%
         #lapply(ascii_to_dec) %>%
@@ -992,26 +1018,66 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
           .$indel_qual #%>%
         #lapply(ascii_to_dec) %>%
         #unlist() 
-       #print(gtl_eps_v)
+       #print(gtl_eps_v_raw)
        #print(gtl_eps_l_raw)
-      }      ## we defined v as k-l from genotype likelihood function
+      }      
+      ## we defined v as k-l from genotype likelihood function
       
-      #therefore, the adjustment factor must be defined
-      n_reference_reads_to_use <- round(length(gtl_eps_v)*((rel_mut$tcn/rel_mut$aff_cp)-1))
-      mx_n <- min(n_reference_reads_to_use, length(gtl_eps_l_raw))
-      ## to stay most restrictive, we only use the n_reference reads wich have the lowest basecall qualities
-      #print(mx_n)
-      gtl_eps_l <- sort(gtl_eps_l_raw, decreasing = FALSE)[seq(1,mx_n,1)]
-      ## calc for both genotypes from here
+      ## as we dont expect purity of 100 %, we need to adjust for that
+      
+      if(rel_mut$origin=="germline"){
+        
+        cv <- formula_checks(chr=rel_mut$chr, 
+                       af=rel_mut$af, 
+                       tcn=rel_mut$tcn, 
+                       purity=purity, 
+                       sex=sex, 
+                       c_normal=NULL)
+        
+        n_reference_reads_in_control <- adjust_n_reference_reads_germline(
+          r=length(gtl_eps_l_raw), 
+          p=purity, 
+          c_tum=rel_mut$tcn, 
+          c_norm=cv$c_normal,
+          VAF_norm=cv$af_normal, 
+          VAF_tum=rel_mut$af
+          )
+        
+        mn_n_ref <- min(0, n_reference_reads_in_control)
+        
+        ## so far, we do not include other genomic constellatons than HZ
+        ## so the number of alt reads to remove is the same a ref reads
+        n_alternative_reads_in_control <- n_reference_reads_in_control
+        mn_n_alt <- min(0, n_alternative_reads_in_control)
+        
+        to_take_ref <- length(gtl_eps_l_raw)-mn_n_ref
+        to_take_alt <- length(gtl_eps_v_raw)-mn_n_alt
+        
+        gtl_eps_l <- sort(gtl_eps_l_raw, decreasing = FALSE)[seq(1,to_take_ref,1)] 
+        gtl_eps_v <- sort(gtl_eps_v_raw, decreasing = FALSE)[seq(1,to_take_alt,1)] 
+        
+      } else {
+        n_reference_reads_to_use <- adjust_n_reference_reads_somatic(a=length(gtl_eps_v_raw), 
+                                                                     c_tum=rel_mut$tcn, 
+                                                                     ac_tum=rel_mut$aff_cp)
+        
+        
+        mx_n <- min(n_reference_reads_to_use, length(gtl_eps_l_raw))
+        ## to stay most restrictive, we only use the n_reference reads wich have the lowest basecall qualities
+        gtl_eps_l <- sort(gtl_eps_l_raw, decreasing = FALSE)[seq(1,mx_n,1)]  
+        gtl_eps_v <- gtl_eps_v_raw
+      }
+      
+
       
       
       
       prob_per_gt <- lapply(allele_specific_genotype, function(gtl_g){
-        formula_genotype_likelihood( gtl_g,
-                                     gtl_eps_l,
-                                     gtl_eps_v,
-                                                 gtl_m,
-                                                 (length(gtl_eps_l)+length(gtl_eps_v))) %>%
+        formula_genotype_likelihood(gtl_g,
+                                    gtl_eps_l,
+                                    gtl_eps_v,
+                                    gtl_m,
+                                    (length(gtl_eps_l)+length(gtl_eps_v))) %>%
           bind_rows() %>%
           return()
       }) %>%
@@ -1077,7 +1143,7 @@ aggregate_likelihoods <- function(mut_template, gt_lk_per_mut, allele_specific_g
   func_end()
   return(aggregated_likelihoods)
 }
-perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna){
+perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna, purity, sex){
   func_start()
   if(AllelicImbalancePhasing){
   ## works only if both variants are in the same segment
@@ -1096,7 +1162,7 @@ perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna
             
             
             gt_lk_per_mut <- calc_genotype_likelihood_per_mut(variants_in_segment, 
-                                                              allele_specific_genotype, bamDna)
+                                                              allele_specific_genotype, bamDna, purity, sex)
             
             if(nrow(gt_lk_per_mut)>0){
               ## can be zero if bam file does not cover variant  
@@ -1191,15 +1257,16 @@ phase <- function(df_gene,
                                            showReadDetail, geneDir)
  #print(0)
  #print(df_gene)
+  #print(global_ZygosityPredictor_variable_mat_phased)
   read_level_phasing_info <- perform_indirect_phasing(df_gene, vcf, bamDna, bamRna, 
                                            haploBlocks,  distCutOff, somCna, 
                                            snpQualityCutOff, purity, sex, 
                                            geneDir, direct_phasing, 
                                            showReadDetail)
   
-  
-  copy_number_phasing <- perform_copy_number_phasing(df_gene, AllelicImbalancePhasing, bamDna)
-  
+  #print(global_ZygosityPredictor_variable_mat_phased)
+  copy_number_phasing <- perform_copy_number_phasing(df_gene, AllelicImbalancePhasing, bamDna, purity, sex)
+  #print(global_ZygosityPredictor_variable_mat_phased)
   # if(nrow(copy_number_phasing)>0){
   #  #print(basename(geneDir))
   #  #print(copy_number_phasing)    

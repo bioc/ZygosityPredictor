@@ -115,8 +115,10 @@ formula_checks <- function(chr, af, tcn, purity, sex, c_normal, af_normal=0.5){
     chr <- check_chr(chr)
     if((sex=="male"&(chr=="X"|chr=="chrX"))|(chr=="Y"|chr=="chrY")){
       c_normal <- 1
+      af_normal <- 1
     } else {
       c_normal <- 2
+      af_normal <- 0.5
     }
   } else {
     c_normal <- check_ploidy(c_normal)
