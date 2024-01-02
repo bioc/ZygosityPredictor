@@ -358,7 +358,8 @@ The result which is returned by the function consists of a list of tibbles:
 * Evaluation per variant
 * Evaluation per gene
 * Main Phasing info
-* detailed phasing info
+* detailed read-level phasing (RLP) info
+* detailed alleleic imbalance phasing (AIP) info, if enabled
 * Read pair info (only if showReadDetail=TRUE and logDir is provided)
 * Variants not covered by somCna (only if present and no sCNA gap assumption 
 was done)
@@ -375,76 +376,6 @@ ZP_ov(fp)
 The function provides an overview about the evaluations done by 
 ZygosityPredictor. One can see that in our case 12 input small variants were 
 used to predict gene status. Of those, two got the status all_copies_affected.
-By using  ```gene_ov()```, more detailed information can be viewed about how the
-tool came to a gene status. What the accessor function does is basically 
-filtering the output tibbles to the gene of relevance. Detailed explannation about all columns can be found below the next chunk.
-
-```{r}
-gene_ov(fp, OR2J1)
-```
-
-The first prompted tibble originates from the eval_per_gene tibble of the output. 
-The tibble shown 
-below originates from eval_per_variant and shows all input small variants of the
-gene. The next tibble originates from main_phasing_info and shows the main
-phasing combinations. Finally, the last tibble comes from detailed_phasing_info
-and contains every phasing combination including the ones with and between SNPs.
-
-What can be seen is that the final gene status of OR2J1 is wt_copies_left. The
-tool predicted around 2.6 remaining wt copies with maximum confidence level of 
-1. Below it can be seen that 3 small variants inside the gene were in the input
-leading to 3 main phasing combinations. Of those, two were directly phased while 
-m2-m3 was phased indirectly via m1-m2 and m1-m3. As all main combinations could 
-be solved, the left wt copies could be accurately defined and the gene status 
-assigned. In this particular case, the gene status could have been solved even 
-without phasing all main combinations by the case we refer to as exclusion.
-As can be seen in the main phasing combinations in column: min_poss_wt_cp, none 
-of the main phasing combinations could lead to less than 0.5 wt copies even if 
-the variants were found on different reads.
-
-The outputs contain columns providing more detailed information about gene status definition
-which will be explained in the following. 
-
-
-* All phasing combinations (either visible via ```gene_ov()``` or accessable via
-```fp$detailed_phasing_info```):
-
-+ **both**: number of reads classified as both (both variants present), adjusted with basecall and maping quality
-+ **mut1**: number of reads classified as mut1 (only the first variant of combination pßresent), adjusted with basecall and maping quality
-+ **mut2**: number of reads classified as mut2 (only the second variant of combination pßresent), adjusted with basecall and maping quality
-+ **dev_var**: number of reads having another variant at one of the positions of the expected variants
-+ **skipped**: number of reads not mapping to the position of the variant (only expected with RNA reads)
-+ **nstatus**: variant constellation in numeric representation (2 = all copies affected, 1 = wt copies left, 0 = undefined)
-+ **status**: variant constellation in character representation
-+ **nstatus**: numeric representation of constellation
-+ **xsq_same/xsq_diff**: X-squared values of chi-squared tests. _same is the one against expected same result
-+ **p_same/p_diff**: p-value of chi-squared tests
-+ **v_same/v_diff**: Cramers V value of chi-squared tests (5)
-+ **none**: number of reads classified as none (none of both variants found)
-+ **DNA_rds/RNA_rds**: number of DNA/RNA reads used
-+ **dist**: Distance between variants
-+ **class_comb**: mutational classes corresponding to character combination identifier
-+ **comb**: combination identifier in character representation (mX-mY). 
-+ **ncomb**: combination identifier in numeric representation. Derived from position in phasing matrix
-+ **subclonal**: TRUE if reads with classification both and either mut1 or mut2 were found. There are two explanantions why soimething like this could happen in a
-cancer sample: First that the tumor is not fully clonal and a subclone is present carrying only the variant that happened earlier during tumor development. The second variant is only carried by a subclone that emerged later. The second explanation could be that the reads are actually from the same cells but a duplication of one allel happend between their occurence. We could imagine a scenario were the genotype of a gene is 1:2 and both variants are on the duplicated allele. If one of them happend before the duplication, we would expect reads carrying only the earlier variant but also reads carrying both of them.
-+ **unplausible** TRUE if reads with classification both, mut1 and mut2 are found for the same variant combination. Compared to the "subclonal" case this is more difficult to explain and might also be an artifact. The only way this could happen in a cancer sample is that the same mutational event happens independently on both alleles and or in different subclones. This case is generally very unlikely and is therefore annotated as unplasuible. Such a setting is also reflected in the p-valkue and thereofre the confidence, as similary with both expected results is found.
-
-
-
-* Main phasing combinations (either visible via ```gene_ov()``` or accessable via
-```fp$phasing_info```):
-
-+ **phasing**: Info which phasing approach was used (direct, indirect, haploblock, imbalance, exclusion)
-+ **via**: combinations which were used to solve this combination. For direct phasing the number is the numeric representation of the combi9nation identifier.
-            For indirect phasing it will look like this: 4-7-8 which measn thta the combinations 4, 7 and 8 were used to solve.
-+ **conf**: aggregated confidence for the combination
-+ **wt_cp**: exact left wt copies. If phasing of combination was not succesful, wt copies can not be calculated acurately which leads to NA
-+ **min_poss_wt_cp**: Minimal possible wt copies if variants are on different copies according to affected copynumber of the two variants in the combination. If greater than 0.5, the constellation is unable to contributre to a status of all copies affrected for the gene.
-+ **max_poss_wt_cp**: maximum possible wt copies if the two variants are on the same copy
-+ **score**: contribution to gene status. (2 is a contribution of all copies affected by the combination, 1 has more than 0.5 wt copies left)
-+ **gene**: Gene that w2as tried to solve with the combination
-
 
 
 ### Evaluation per variant
@@ -471,6 +402,86 @@ but still this information is not sufficient to predict *“all_copies_affected�
 without doubt. Depending on the origin of the variant, further criteria must 
 be met (e.g., LOH). The procedure for this first check is shown in the pre_info 
 column.
+
+
+### Evaluation per gene + phasing info
+
+By using  ```gene_ov()```, more detailed information can be viewed about how the
+tool came to a gene status. What the accessor function does is basically 
+filtering the output tibbles to the gene of relevance. Detailed explanation about all columns can be found below the next chunk.
+
+```{r}
+gene_ov(fp, OR2J1)
+```
+
+The first prompted tibble originates from the eval_per_gene tibble of the output. 
+The tibble shown 
+below originates from eval_per_variant and shows all input small variants of the
+gene. The next tibble originates from main_phasing_info and shows the main
+phasing combinations. Finally, the last tibble comes from detailed_RLP_info
+and contains every phasing combination including the ones with and between SNPs.
+
+What can be seen is that the final gene status of OR2J1 is wt_copies_left. The
+tool predicted around 2.6 remaining wt copies with maximum confidence level of 
+1. Below it can be seen that 3 small variants inside the gene were in the input
+leading to 3 main phasing combinations. All of them were phased via direct read level phasing.
+As all main combinations could 
+be solved, the left wt copies could be accurately defined and the gene status 
+assigned. In this particular case, the gene status could have been solved even 
+without phasing all main combinations by the case we refer to as insufficient.
+As the final gene status is defnied via the so called ```integrated_affected_copies```, 
+which are defnied for diff constellation via:  ```aff_cp(m1)+aff_cp(m2) ``` and for the same constellation:
+ ```max(aff_cp(m1), aff_cp(m2))```, we can pre-calculate the maximum affected
+ copies in case of a diff constellation. If the difference of the total copy number 
+ and the integrated affected copies leaves more than 0.5 wt copies, the status wt_cp_left can be concluded.
+As can be seen in the main phasing combinations in column: min_poss_wt_cp, none 
+of the main phasing combinations could lead to less than 0.5 wt copies even if 
+the variants were found on different reads.
+
+The outputs contain columns providing more detailed information about gene status definition
+which will be explained in the following. 
+
+
+#### All read-level phasing combinations (either visible via ```gene_ov()``` or accessable via
+```fp$detailed_RLP_info```):
+
++ **both**: number of reads classified as both (both variants present), adjusted with basecall and maping quality
++ **mut1**: number of reads classified as mut1 (only the first variant of combination pßresent), adjusted with basecall and maping quality
++ **mut2**: number of reads classified as mut2 (only the second variant of combination pßresent), adjusted with basecall and maping quality
++ **dev_var**: number of reads having another variant at one of the positions of the expected variants
++ **skipped**: number of reads not mapping to the position of the variant (only expected with RNA reads)
++ **nstatus**: variant constellation in numeric representation (2 = all copies affected, 1 = wt copies left, 0 = undefined)
++ **status**: variant constellation in character representation
++ **nstatus**: numeric representation of constellation
++ **xsq_same/xsq_diff**: X-squared values of chi-squared tests. _same is the one against expected same result
++ **p_same/p_diff**: p-value of chi-squared tests
++ **v_same/v_diff**: Cramers V value of chi-squared tests (5)
++ **none**: number of reads classified as none (none of both variants found)
++ **DNA_rds/RNA_rds**: number of DNA/RNA reads used
++ **dist**: Distance between variants
++ **class_comb**: mutational classes corresponding to character combination identifier
++ **comb**: combination identifier in character representation (mX-mY). 
++ **ncomb**: combination identifier in numeric representation. Derived from position in phasing matrix
++ **subclonal**: TRUE if reads with classification both and either mut1 or mut2 were found. There are two explanantions why soimething like this could happen in a
+cancer sample: First that the tumor is not fully clonal and a subclone is present carrying only the variant that happened earlier during tumor development. The second variant is only carried by a subclone that emerged later. The second explanation could be that the reads are actually from the same cells but a duplication of one allel happend between their occurence. We could imagine a scenario were the genotype of a gene is 1:2 and both variants are on the duplicated allele. If one of them happend before the duplication, we would expect reads carrying only the earlier variant but also reads carrying both of them.
++ **unplausible** TRUE if reads with classification both, mut1 and mut2 are found for the same variant combination. Compared to the "subclonal" case this is more difficult to explain and might also be an artifact. The only way this could happen in a cancer sample is that the same mutational event happens independently on both alleles and or in different subclones. This case is generally very unlikely and is therefore annotated as unplasuible. Such a setting is also reflected in the p-valkue and thereofre the confidence, as similary with both expected results is found.
+
+
+#### Main phasing combinations (either visible via ```gene_ov()``` or accessable via
+```fp$phasing_info```):
+
++ **phasing**: Info which phasing approach was used (direct, indirect, haploblock, imbalance, exclusion)
++ **via**: combinations which were used to solve this combination. For direct phasing the number is the numeric representation of the combi9nation identifier.
+            For indirect phasing it will look like this: 4-7-8 which measn thta the combinations 4, 7 and 8 were used to solve.
++ **conf**: aggregated confidence for the combination
++ **wt_cp**: exact left wt copies. If phasing of combination was not succesful, wt copies can not be calculated acurately which leads to NA
++ **min_poss_wt_cp**: Minimal possible wt copies if variants are on different copies according to affected copynumber of the two variants in the combination. If greater than 0.5, the constellation is unable to contributre to a status of all copies affrected for the gene.
++ **max_poss_wt_cp**: maximum possible wt copies if the two variants are on the same copy
++ **score**: contribution to gene status. (2 is a contribution of all copies affected by the combination, 1 has more than 0.5 wt copies left)
++ **gene**: Gene that w2as tried to solve with the combination
+
+
+
 
 
 # References
