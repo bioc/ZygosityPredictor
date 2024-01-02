@@ -945,7 +945,10 @@ formula_genotype_likelihood <- function(gtl_g,
       (gtl_m-gtl_g)*(1-E)+gtl_g*E
     })) %>%
       prod()
-    genotype_likelihood <- (1/(gtl_m^gtl_k))*gtl_prod_ref*gtl_prod_alt   
+    ## full formula
+    genotype_likelihood <- (1/(gtl_m^gtl_k))*gtl_prod_ref*gtl_prod_alt  
+    ## formula without primary factor
+    #genotype_likelihood <- gtl_prod_ref*gtl_prod_alt  
     return(c(gt=gtl_g, lklhd=genotype_likelihood, prod_ref=gtl_prod_ref, prod_alt=gtl_prod_alt))
   #}) %>%
     #bind_rows() %>%
@@ -981,7 +984,8 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
                       ranges = rel_mut$pos)
     ## now load all reads/read-pairs that cover the position of the first variant
     #vm("loading reads", 1)
-    all_reads <- load_covering_reads(ref_gr, rel_mut, bamDna)
+    all_reads <- load_covering_reads(ref_gr, rel_mut, bamDna)%>%
+      mutate(processed_mapq=10^(as.numeric(mapq)/(-10)))
     #print(rel_mut)
     #print(all_reads)
     gtl_m <- rel_mut$tcn
@@ -991,31 +995,33 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
       if(rel_mut$class=="snv"){
         gtl_eps_v_raw <- all_reads %>%
           .[which(.$base==rel_mut$alt),] %>%
-          .$qual %>%
-          lapply(ascii_to_dec) %>%
-          unlist() 
+          rowwise() %>%
+          mutate(processed_bq=ascii_to_dec(qual),
+            aggregated_qual=1-(1-processed_bq)*(1-processed_mapq)) %>%
+          pull(aggregated_qual) 
         ## epsylon l has all reference read basecall qualities
         ## it must be adjusted to only the somatic ones
         gtl_eps_l_raw <- all_reads %>%
           .[which(.$base==rel_mut$ref),] %>%
-          .$qual %>%
-          lapply(ascii_to_dec) %>%
-          unlist()              
+          rowwise() %>%
+          mutate(processed_bq=ascii_to_dec(qual),
+                 aggregated_qual=1-(1-processed_bq)*(1-processed_mapq)) %>%
+          pull(aggregated_qual)              
       } else {
         
-        all_reads_indel <- all_reads %>%
-          mutate(indel_qual=10^(as.numeric(mapq)/(-10)))
+        #all_reads_indel <- all_reads %>%
+         # mutate(processed_mapq=10^(as.numeric(mapq)/(-10)))
         
         #print(all_reads_indel)
-        gtl_eps_v_raw <- all_reads_indel %>%
+        gtl_eps_v_raw <- all_reads %>%
           .[which(.$exp_indel==TRUE),] %>%
-          .$indel_qual #%>%
+          .$processed_mapq #%>%
         #lapply(ascii_to_dec) %>%
         #unlist() 
         #print(2)
-        gtl_eps_l_raw <- all_reads_indel %>%
+        gtl_eps_l_raw <- all_reads %>%
           .[which(.$exp_indel==FALSE),] %>%
-          .$indel_qual #%>%
+          .$processed_mapq #%>%
         #lapply(ascii_to_dec) %>%
         #unlist() 
        #print(gtl_eps_v_raw)
@@ -1067,10 +1073,6 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
         gtl_eps_l <- sort(gtl_eps_l_raw, decreasing = FALSE)[seq(1,mx_n,1)]  
         gtl_eps_v <- gtl_eps_v_raw
       }
-      
-
-      
-      
       
       prob_per_gt <- lapply(allele_specific_genotype, function(gtl_g){
         formula_genotype_likelihood(gtl_g,
@@ -1134,11 +1136,16 @@ aggregate_likelihoods <- function(mut_template, gt_lk_per_mut, allele_specific_g
       
       p_diff <- prod(p_m1_gt1*p_m2_gt2)+prod(p_m1_gt2*p_m2_gt1)
       p_same <- prod(p_m1_gt1*p_m2_gt1)+prod(p_m1_gt2*p_m2_gt2)
-      return(c(comb, p_same=p_same, p_diff=p_diff))
+      
+      LLR_d_s <- log10(p_diff/p_same)
+      #LLR_s_d <- log10(p_same/p_diff)
+      
+      return(c(comb, p_same=p_same, p_diff=p_diff, llr=LLR_d_s#, llr_s_d=LLR_s_d
+               ))
       
     }) %>%
     bind_rows() %>%
-    mutate_at(.vars=c("p_same", "p_diff"),
+    mutate_at(.vars=c("p_same", "p_diff", "llr"),
               .funs = as.numeric) 
   func_end()
   return(aggregated_likelihoods)
@@ -1181,8 +1188,9 @@ perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna
                     as.numeric(p_same)>=as.numeric(p_diff) ~ 1,
                     as.numeric(p_diff)>as.numeric(p_same) ~ 2
                   ),
-                  conf=max(as.numeric(p_diff),as.numeric(p_same))
-                  
+                  #conf=max(as.numeric(p_diff),as.numeric(p_same))
+                  #conf=min(abs(llr_d_s), abs(llr_s_d))
+                  conf=abs(llr)
                 )   
             
             ## define inputs for genotype likelyhood

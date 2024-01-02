@@ -11,6 +11,9 @@ GRanges object
 \usage{
 data(GR_HAPLOBLOCKS)
 }
+\value{
+Object containing haploblock annotations
+}
 \description{
 haploblocks
 }

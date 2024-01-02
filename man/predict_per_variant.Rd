@@ -90,6 +90,9 @@ strings are covered. It is recommended to leave this flag TRUE}
 
 \item{verbose}{logical, default=FALSE; prints functions that are called}
 }
+\value{
+A list containing tibbles with all input variants
+}
 \description{
 predicts zygosity of a set of variants
 }

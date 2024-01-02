@@ -11,6 +11,9 @@ GRanges object
 \usage{
 data(GR_SOM_SMALL_VARS)
 }
+\value{
+Object containing germline Indels and SNVs of SeqC2 example case
+}
 \description{
 germline small variant object
 }

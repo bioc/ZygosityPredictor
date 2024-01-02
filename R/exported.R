@@ -5,9 +5,61 @@
 #' @param inp_gene name of gene that should be printed with detailed information
 #' @param n max number of rows to print, as some gene status depend on loads of
 #' phasing results#' 
-#' 
+#' @return prints overview about run from function predict_zygoisty() with specific information about provided gene
 #' @export
 #' @importFrom rlang ensym
+#' @examples
+#' cnvs  = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr = "chr17",
+#'     start = c(170060, 34520990),
+#'     end = c(34520990, 83198614),
+#'     tcn = c(2, 1),
+#'     cna_type = c("neutral", "LOH")
+#'   )
+#' )
+#' somatic_vars = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr="chr17",
+#'     start = 7675088,
+#'     end = 7675088,
+#'     ref = "C",
+#'     alt = "T",
+#'     af = 0.65,
+#'     gene = "TP53" 
+#'   )
+#' )
+#' germline_vars = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr="chr17",
+#'     start = 41771694,
+#'     end = 41771694,
+#'     ref = "GTGT",
+#'     alt = "G",
+#'     af = 0.95,
+#'     gene = "JUP" 
+#'   )
+#' )
+#' reference = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr = "chr17",
+#'     start = c(7661778, 41754603),
+#'     end = c(7687538, 41786931),
+#'     gene = c("TP53", "JUP")
+#'   )
+#' )
+#' sex = "female"
+#' purity = 0.9
+#' bamfile <- system.file("extdata", "ZP_example.bam", 
+#'   package = "ZygosityPredictor")
+#' fp <- predict_zygosity(purity = purity, sex = sex, 
+#'   somCna = cnvs,
+#'   somSmallVars = somatic_vars,
+#'   germSmallVars = germline_vars,
+#'   geneModel = reference,
+#'   bamDna = bamfile
+#' )
+#' gene_ov(fp, TP53)
 gene_ov <- function(fp, inp_gene, n=20){
   #inp_gene <- as.character(rlang::ensym(inp_gene))
   inp_gene <- as.character(ensym(inp_gene))
@@ -81,8 +133,60 @@ gene_ov <- function(fp, inp_gene, n=20){
 #' accesor for ZygoistyPredictor runs. Prints an overview about the run
 #' 
 #' @param fp full prediction (output of predict_zygoisty())
-#' 
+#' @return prints overview about run from function predict_zygoisty()
 #' @export
+#' @examples
+#' cnvs  = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr = "chr17",
+#'     start = c(170060, 34520990),
+#'     end = c(34520990, 83198614),
+#'     tcn = c(2, 1),
+#'     cna_type = c("neutral", "LOH")
+#'   )
+#' )
+#' somatic_vars = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr="chr17",
+#'     start = 7675088,
+#'     end = 7675088,
+#'     ref = "C",
+#'     alt = "T",
+#'     af = 0.65,
+#'     gene = "TP53" 
+#'   )
+#' )
+#' germline_vars = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr="chr17",
+#'     start = 41771694,
+#'     end = 41771694,
+#'     ref = "GTGT",
+#'     alt = "G",
+#'     af = 0.95,
+#'     gene = "JUP" 
+#'   )
+#' )
+#' reference = GenomicRanges::GRanges(
+#'   dplyr::tibble(
+#'     chr = "chr17",
+#'     start = c(7661778, 41754603),
+#'     end = c(7687538, 41786931),
+#'     gene = c("TP53", "JUP")
+#'   )
+#' )
+#' sex = "female"
+#' purity = 0.9
+#' bamfile <- system.file("extdata", "ZP_example.bam", 
+#'   package = "ZygosityPredictor")
+#' fp <- predict_zygosity(purity = purity, sex = sex, 
+#'   somCna = cnvs,
+#'   somSmallVars = somatic_vars,
+#'   germSmallVars = germline_vars,
+#'   geneModel = reference,
+#'   bamDna = bamfile
+#' )
+#' ZP_ov(fp)
 ZP_ov <- function(fp){
   
   if(!is.null(fp$eval_per_variant)){
@@ -107,6 +211,8 @@ ZP_ov <- function(fp){
         filter(nconst>0) %>% pull(gene) %>%
       
         unique() %>% sort %>% paste(collapse = ", ")
+    } else {
+      phased_genes <- "none"
     }
     message("Zygosity Prediction of ", n_vars, " input variants")
     message(n_uncovered_vars, " are uncovered by sCNA input and were not evaluated")

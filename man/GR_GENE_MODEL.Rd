@@ -11,6 +11,9 @@ GRanges object
 \usage{
 data(GR_GENE_MODEL)
 }
+\value{
+Object containing gene model of hg38
+}
 \description{
 germline small variant object
 }

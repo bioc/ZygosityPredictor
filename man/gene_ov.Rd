@@ -15,7 +15,63 @@ gene_ov(fp, inp_gene, n = 20)
 \item{n}{max number of rows to print, as some gene status depend on loads of
 phasing results#'}
 }
+\value{
+prints overview about run from function predict_zygoisty() with specific information about provided gene
+}
 \description{
 accesor for gene predictions printing detailed info about how a gene status 
 was assigned
+}
+\examples{
+cnvs  = GenomicRanges::GRanges(
+  dplyr::tibble(
+    chr = "chr17",
+    start = c(170060, 34520990),
+    end = c(34520990, 83198614),
+    tcn = c(2, 1),
+    cna_type = c("neutral", "LOH")
+  )
+)
+somatic_vars = GenomicRanges::GRanges(
+  dplyr::tibble(
+    chr="chr17",
+    start = 7675088,
+    end = 7675088,
+    ref = "C",
+    alt = "T",
+    af = 0.65,
+    gene = "TP53" 
+  )
+)
+germline_vars = GenomicRanges::GRanges(
+  dplyr::tibble(
+    chr="chr17",
+    start = 41771694,
+    end = 41771694,
+    ref = "GTGT",
+    alt = "G",
+    af = 0.95,
+    gene = "JUP" 
+  )
+)
+reference = GenomicRanges::GRanges(
+  dplyr::tibble(
+    chr = "chr17",
+    start = c(7661778, 41754603),
+    end = c(7687538, 41786931),
+    gene = c("TP53", "JUP")
+  )
+)
+sex = "female"
+purity = 0.9
+bamfile <- system.file("extdata", "ZP_example.bam", 
+  package = "ZygosityPredictor")
+fp <- predict_zygosity(purity = purity, sex = sex, 
+  somCna = cnvs,
+  somSmallVars = somatic_vars,
+  germSmallVars = germline_vars,
+  geneModel = reference,
+  bamDna = bamfile
+)
+gene_ov(fp, TP53)
 }

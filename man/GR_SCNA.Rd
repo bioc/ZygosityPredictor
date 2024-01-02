@@ -11,6 +11,9 @@ GRanges object
 \usage{
 data(GR_SCNA)
 }
+\value{
+Object containing somatic copy number abberations (sCNAs) of SeqC2 example case
+}
 \description{
 copynumber object
 }
