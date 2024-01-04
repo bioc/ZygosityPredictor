@@ -6,7 +6,7 @@ output:
     toc: true
     toc_depth: 2
 vignette: >
-  %\VignetteIndexEntry{ZygosityPredictor_Usage}
+  %\VignetteIndexEntry{Usage}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -442,8 +442,8 @@ The outputs contain columns providing more detailed information about gene statu
 which will be explained in the following. 
 
 
-#### All read-level phasing combinations (either visible via ```gene_ov()``` or accessable via
-```fp$detailed_RLP_info```):
+#### All read-level phasing combinations 
+(either visible via ```gene_ov()``` or accessable via ```fp$detailed_RLP_info```):
 
 + **both**: number of reads classified as both (both variants present), adjusted with basecall and maping quality
 + **mut1**: number of reads classified as mut1 (only the first variant of combination pßresent), adjusted with basecall and maping quality
