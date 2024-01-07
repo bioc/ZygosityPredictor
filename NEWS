@@ -1,2 +1,8 @@
-Changes in version 0.99.0 (2023-02-22)
+Version 0.99.0 (2023-02-22)
 + Submitted to Bioconductor
+Version 1.3.2
++ Updated tool to revised manuscript
++ New phasing approaches via predefined haploblocks and allelic imbalance
++ Confidence measurement for each gene status 
+Version 1.3.5
++ fixed small issues in tool and documentation

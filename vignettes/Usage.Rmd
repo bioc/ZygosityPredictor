@@ -467,8 +467,7 @@ cancer sample: First that the tumor is not fully clonal and a subclone is presen
 + **unplausible** TRUE if reads with classification both, mut1 and mut2 are found for the same variant combination. Compared to the "subclonal" case this is more difficult to explain and might also be an artifact. The only way this could happen in a cancer sample is that the same mutational event happens independently on both alleles and or in different subclones. This case is generally very unlikely and is therefore annotated as unplasuible. Such a setting is also reflected in the p-valkue and thereofre the confidence, as similary with both expected results is found.
 
 
-#### Main phasing combinations (either visible via ```gene_ov()``` or accessable via
-```fp$phasing_info```):
+#### Main phasing combinations (either visible via ```gene_ov()``` or accessable via ```fp$phasing_info```):
 
 + **phasing**: Info which phasing approach was used (direct, indirect, haploblock, imbalance, exclusion)
 + **via**: combinations which were used to solve this combination. For direct phasing the number is the numeric representation of the combi9nation identifier.
