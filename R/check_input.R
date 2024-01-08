@@ -4,12 +4,14 @@
 #' @importFrom dplyr case_when
 #' @importFrom GenomicRanges elementMetadata elementMetadata<-
 assign_correct_colnames <- function(obj, type){
+  func_start()
   #vm(as.character(sys.call()[1]), 1)
   . <- NULL
   if(type=="scna"){
+    
     ## define correct tcn column
     col_tcn <- str_match(
-      nm_md(obj), paste(allowed_inputs("colnames_tcn"), collapse="|")) %>%
+      nm_md(obj), paste(allowed_inputs("colnames_tcn", regex=TRUE), collapse="|")) %>%
       .[which(!is.na(.))]
     elementMetadata(obj)[,"tcn"] <- 
       elementMetadata(obj)[,col_tcn] 
@@ -19,7 +21,7 @@ assign_correct_colnames <- function(obj, type){
                                 TRUE ~ "HZ")
     } else {
       col_cna_type <- str_match(
-        nm_md(obj), paste(allowed_inputs("colnames_cna_type"), 
+        nm_md(obj), paste(allowed_inputs("colnames_cna_type", regex=TRUE), 
                           collapse="|")) %>%
         .[which(!is.na(.))]   
       elementMetadata(obj)[,"cna_type"] <- 
@@ -30,7 +32,7 @@ assign_correct_colnames <- function(obj, type){
     ## define allelic imbalance column (optional input)
     ## check if column provided in input
     col_all_imb <- str_match(
-      nm_md(obj), paste(allowed_inputs("colnames_all_imb"), 
+      nm_md(obj), paste(allowed_inputs("colnames_all_imb", regex=TRUE), 
                         collapse="|")) %>%
       .[which(!is.na(.))] 
     if(length(col_all_imb)>0){
@@ -48,7 +50,7 @@ assign_correct_colnames <- function(obj, type){
     ## if allelic imbalance was detected somewhere, also the genotype needs to be annotated 
     ## except if tcn ==3
     col_genotype <- str_match(
-      nm_md(obj), paste(allowed_inputs("colnames_genotype"), 
+      nm_md(obj), paste(allowed_inputs("colnames_genotype", regex=TRUE), 
                         collapse="|")) %>%
       .[which(!is.na(.))]
     if(length(col_genotype)>0){
@@ -77,19 +79,19 @@ assign_correct_colnames <- function(obj, type){
   } else {
     col_gene <- str_match(
       nm_md(obj), 
-      paste(allowed_inputs("colnames_gene"), collapse="|")) %>%
+      paste(allowed_inputs("colnames_gene", regex=TRUE), collapse="|")) %>%
       .[which(!is.na(.))]
     elementMetadata(obj)[,"gene"] <- 
       elementMetadata(obj)[,col_gene]  
     if(type=="small_vars"){
       col_af <- str_match(
-        nm_md(obj), paste(allowed_inputs("colnames_af"), collapse="|")) %>%
+        nm_md(obj), paste(allowed_inputs("colnames_af", regex=TRUE), collapse="|")) %>%
         .[which(!is.na(.))]
       col_ref <- str_match(
-        nm_md(obj), paste(allowed_inputs("colnames_ref"), collapse="|")) %>%
+        nm_md(obj), paste(allowed_inputs("colnames_ref", regex=TRUE), collapse="|")) %>%
         .[which(!is.na(.))]
       col_alt <- str_match(
-        nm_md(obj), paste(allowed_inputs("colnames_alt"), collapse="|")) %>%
+        nm_md(obj), paste(allowed_inputs("colnames_alt", regex=TRUE), collapse="|")) %>%
         .[which(!is.na(.))]
       elementMetadata(obj)[,"af"] <- 
         elementMetadata(obj)[,col_af]
@@ -101,6 +103,7 @@ assign_correct_colnames <- function(obj, type){
         seq_len(length(obj))    
     }    
   }
+  func_end()
   return(obj)
 }
 #' @keywords internal
@@ -257,15 +260,16 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
 #' @keywords internal
 #' description follows
 check_name_presence <- function(obj, type){
+  func_start()
   if(type=="scna"){
     if(
       any(allowed_inputs("colnames_tcn") %in% nm_md(obj))&
       (any(allowed_inputs("colnames_cna_type") %in% nm_md(obj))|
        "LOH" %in% nm_md(obj))
     ){ 
-      return(TRUE)
+      res <- TRUE
     } else {
-      return(FALSE)
+      res <- FALSE
     } 
   } else {
     if(
@@ -279,11 +283,13 @@ check_name_presence <- function(obj, type){
         )
       )
     ){
-      return(TRUE)
+      res <- TRUE
     } else {
-      return(FALSE)
+      res <- FALSE
     }    
   }
+  func_end()
+  return(res)
 }
 check_logDir <- function(logDir){
   if(!is.null(logDir)){
@@ -298,13 +304,14 @@ check_logDir <- function(logDir){
   }
 }
 general_gr_checks <- function(obj, type, lab){
+  func_start()
   if(!is(obj, "GRanges")){
     stop("input ", lab, " must be a GRanges object;",
          "given input appears to be:", 
          class(obj))
   } else if(type=="haploBlocks"){
   ## haploblocks do not need any metadata columns  
-    return(obj)
+    res <- obj
   } else if(!check_name_presence(obj, type)){
     if(type=="scna"){
       stop(
@@ -320,28 +327,34 @@ general_gr_checks <- function(obj, type, lab){
         "\'gene\'/\'GENE\'")
     }
   } else {
-    return(assign_correct_colnames(obj, type))
+    res <- assign_correct_colnames(obj, type)
   }
+  func_end()
+  return(res)
 }
 #' @keywords internal
 #' description follows
 check_gr_gene_model <- function(geneModel, is_pre_eval){
+  func_start()
   . <- NULL
   if(is_pre_eval==TRUE){
     if(is.null(geneModel)){
-      return(NULL)
+      res <- NULL
     } else {
-      return(general_gr_checks(geneModel, "gene_model", "geneModel"))
+      res <- general_gr_checks(geneModel, "gene_model", "geneModel")
     }
   } else if(is.null(geneModel)){
     stop("input geneModel must not be NULL")
   } else {
-    return(general_gr_checks(geneModel, "gene_model", "geneModel"))
+    res <- general_gr_checks(geneModel, "gene_model", "geneModel")
   }
+  func_end()
+  return(res)
 }
 #' @keywords internal
 #' description follows
 check_gr_small_vars <- function(obj, origin){
+  func_start()
   . <- NULL
   lab <- ifelse(origin=="somatic",
                 "somSmallVars",
@@ -349,14 +362,16 @@ check_gr_small_vars <- function(obj, origin){
   if(is.null(obj)){
     warning("Input ", lab, " empty/does not contain variants. ",
             "Assuming there are no ", origin, " small variants")
-    return(NULL)
+    res <- NULL
   } else if(length(obj)==0){
     warning("Input ", lab, " empty/does not contain variants. ",
             "Assuming there are no ", origin, " small variants")
-    return(NULL)
+    res <- NULL
   } else {
-    return(general_gr_checks(obj, "small_vars", lab))
+    res <- general_gr_checks(obj, "small_vars", lab)
   }
+  func_end()
+  return(res)
 }
 #' @keywords internal
 #' description follows 
@@ -375,17 +390,20 @@ check_purity <- function(purity){
 #' @keywords internal
 #' description follows
 check_ploidy <- function(ploidy){
+  func_start()
   if(is.null(ploidy)){
-    return(NULL)
+    res <- NULL
   } else {
     if(is.na(as.numeric(ploidy))){
       stop("input ploidy/c_normal must be numeric or a character that can",
            "be converted to numeric;\n  ", ploidy, 
            "can not be converted to numeric")
     } else {
-      return(as.numeric(ploidy))
+      res <- as.numeric(ploidy)
     }
   }
+  func_end()
+  return(res)
 }
 #' @keywords internal
 #' description follows
@@ -458,7 +476,7 @@ check_haploblocks <- function(haploBlocks){
   }
 }
 #' @keywords internal
-allowed_inputs <- function(which_one){
+allowed_inputs <- function(which_one, regex=FALSE){
   . <- NULL
   type_list <- list(
     cna_homdel_annotation = paste(c("HOMDEL", "HomoDel", "HomoDEL", "HOMODEL", 
@@ -479,5 +497,12 @@ allowed_inputs <- function(which_one){
     colnames_genotype = c("gt_cna", "genotype", "GT", "gt"),
     sex_names = c("male", "m", "female", "f") %>% c(.,toupper(.))
   )
-  return(type_list[[which_one]])
+  res <- type_list[[which_one]]
+  if(regex){
+    res_regex <- paste0("^", res, "$")
+    return(res_regex)
+  } else {
+    return(res)
+  }
+  
 }
