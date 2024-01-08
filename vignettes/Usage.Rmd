@@ -469,7 +469,7 @@ cancer sample: First that the tumor is not fully clonal and a subclone is presen
 
 #### Main phasing combinations (either visible via ```gene_ov()``` or accessable via ```fp$phasing_info```):
 
-+ **phasing**: Info which phasing approach was used (direct, indirect, haploblock, imbalance, exclusion)
++ **phasing**: Info which phasing approach was used (direct, indirect, haploblock, imbalance, flagged)
 + **via**: combinations which were used to solve this combination. For direct phasing the number is the numeric representation of the combi9nation identifier.
             For indirect phasing it will look like this: 4-7-8 which measn thta the combinations 4, 7 and 8 were used to solve.
 + **conf**: aggregated confidence for the combination
