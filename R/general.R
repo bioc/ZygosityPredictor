@@ -344,7 +344,7 @@ ascii_to_dec <- function(ascii_encoded){
 #' @importFrom knitr kable
 print_tibble <- function(tbl_in){
   # res <- paste(as.character(knitr::kable(tbl_in)), collapse="\n")
-  res <- paste(as.character(kable(tbl_in)), collapse="\n")
+  res <- paste(as.character(knitr::kable(tbl_in)), collapse="\n")
   return(res)
 }
 #' @importFrom GenomicRanges GRanges seqnames start end
@@ -694,7 +694,7 @@ predict_zygosity_genewise <- function(GENE,
       eval_for_gene <- eval_one_mut_affects_all(df_gene, printLog)
     ## (2): if only one variant is present  
   } else if(nrow(df_gene)==1){
-      append_loglist("one variant that does ot affect all copies")
+      append_loglist("one variant that does not affect all copies")
       eval_for_gene <- eval_one_mut(df_gene, printLog)
     ## (3): more than one variant present in gene   
   } else {  
@@ -887,9 +887,9 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
     full_output <- NULL
   } else {
     if(is.null(df_incompletedels)){
-      full_output <- final_output
+      full_output_pre <- final_output
     } else {
-      full_output <- bind_rows(
+      full_output_pre <- bind_rows(
         final_output,
         df_incompletedels %>%
           filter(!gene %in% final_output$gene) %>%
@@ -898,12 +898,18 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
           mutate(status="wt_copies_left",
                  info="somatic-incompletedel")
       )       
-    }    
+    }
+    full_output <- full_output_pre %>%
+      mutate(status=factor(status, 
+                           levels=c("all_copies_affected", "wt_copies_left", 
+                                    "undefined")))
   }
   func_end()
   return(full_output)
 }
 remove_global_vars <- function(){
+  func_start()
+  #rlang::env_unlock(globalenv())
   suppressWarnings(
     rm(global_ZygosityPredictor_variable_call_depth, 
        global_ZygosityPredictor_variable_log_depth, 
@@ -916,8 +922,11 @@ remove_global_vars <- function(){
        global_ZygosityPredictor_variable_mat_dist, 
        global_ZygosityPredictor_variable_main_muts, 
        global_ZygosityPredictor_variable_main_pos, 
-       global_ZygosityPredictor_variable_embedded)
+       global_ZygosityPredictor_variable_embedded#,
+       #inherits = TRUE
+       )
   )
+  func_end()
 }
 set_global_variables <- function(debug, verbose, printLog){
   global_ZygosityPredictor_variable_call_depth <<- 0

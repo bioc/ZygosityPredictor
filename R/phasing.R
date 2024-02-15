@@ -1372,7 +1372,7 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in,  which="all",
       if(chrom %in% Rsamtools::seqnamesTabix(VCF)){
       #if(chrom %in% seqnamesTabix(VCF)){
         loadedVcf <- 
-          readVcf(VCF, 
+          VariantAnnotation::readVcf(VCF, 
                   param=region_to_load)
         combVcf <- rowRanges(loadedVcf) 
         if(length(combVcf)>0){
@@ -1407,7 +1407,7 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in,  which="all",
         #   as.character()
         # af <- VariantAnnotation::info(loadedVcf)[[colname_af]]
         # dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]]
-        loadedVcf <- readVcf(VCF)
+        loadedVcf <- VariantAnnotation::readVcf(VCF)
         gt <- geno(loadedVcf)[[colname_gt]] %>% as.character()
         af <- info(loadedVcf)[[colname_af]]
         dp4 <- info(loadedVcf)[[colname_dp4]]

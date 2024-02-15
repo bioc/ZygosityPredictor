@@ -410,6 +410,7 @@ predict_per_variant <- function(purity,
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
     som_covered <- germ_covered <- final_phasing_info <- 
     combined_snp_phasing <- NULL
+  
   if(!exists("global_ZygosityPredictor_variable_embedded")){
     is_pre_eval <- TRUE
     set_global_variables(FALSE, verbose, FALSE)
@@ -418,24 +419,27 @@ predict_per_variant <- function(purity,
                            colnameCnaType)  
     purity <- check_purity(purity)
     sex <- check_sex(sex)
+    somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
+    germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
+    ploidy <- check_ploidy(ploidy)
+    geneModel <- check_gr_gene_model(geneModel, is_pre_eval)
+    
+
   } else {
     is_pre_eval <- FALSE
   }
+  ## for parent function this must be here after gobal variable edfinition
   func_start()
-  ## check input for valid format
-  somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
-  germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
-  ploidy <- check_ploidy(ploidy)
-  geneModel <- check_gr_gene_model(geneModel, is_pre_eval)
-  assumeSomCnaGaps <- check_opt_assgap(assumeSomCnaGaps, ploidy)
+  ## check input for valid format    
   includeIncompleteDel <- check_opt_incdel(includeIncompleteDel, ploidy)
   includeHomoDel <- check_opt_incdel(includeHomoDel, ploidy)
+  assumeSomCnaGaps <- check_opt_assgap(assumeSomCnaGaps, ploidy)
   if(is.null(geneModel)){
     ## only small variants can be evaulated
     if(includeIncompleteDel==TRUE|includeHomoDel==TRUE){
       includeIncompleteDel <- FALSE
       includeHomoDel <- FALSE
-      warning("To include large deletions the geneModel muist be provided.",
+      warning("To include large deletions the geneModel must be provided.",
               "IncludeHomoDel and IncludeIncompleteDel will be FALSE")
     }
     templateGenes <- c(somSmallVars$gene, germSmallVars$gene)
@@ -678,19 +682,25 @@ predict_zygosity <- function(purity,
     gene <- final_phasing_info <- combined_read_details <-  final_output <-
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
     som_covered <- germ_covered <- final_phasing_info <- detailed_RLP_info <- 
-    detailed_AIP_info <- 
+    detailed_AIP_info <- combined_eval_per_gene <- full_phasing_info <- 
     combined_snp_phasing <- evaluation_per_gene <- log_list_per_gene <- 
-    detailed_phasing_info <- comb_mat_phased <- comb_mat_info <- 
-    combined_eval_per_gene <- full_phasing_info <- NULL
+    detailed_phasing_info <- comb_mat_phased <- comb_mat_info <- NULL
   ## define global debugging variable
   set_global_variables(debug, verbose, printLog)
   global_ZygosityPredictor_variable_embedded <<- TRUE
+  ## for parent function this must be here after gobal variable edfinition
   func_start()
+  ploidy <- check_ploidy(ploidy)
+  sex <- check_sex(sex)
+  assumeSomCnaGaps <- check_opt_assgap(assumeSomCnaGaps, ploidy)
+  geneModel <- check_gr_gene_model(geneModel)
   somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                           assumeSomCnaGaps, colnameTcn, 
                           colnameCnaType)
   purity <- check_purity(purity)
-  sex <- check_sex(sex)
+  somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
+  germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
+  
   evaluation_per_variant_pre <- predict_per_variant(purity, 
                                                     sex,
                                                     somCna, 
@@ -706,60 +716,59 @@ predict_zygosity <- function(purity,
                                                     byTcn)
   evaluation_per_variant <- evaluation_per_variant_pre$evaluation_per_variant
   if(!is.null(evaluation_per_variant)){
-    if(!nrow(evaluation_per_variant)==0){
-      bamDna <- check_bam(bamDna)
-      bamRna <- check_rna(bamRna)
-      logDir <- check_logDir(logDir)
-      haploBlocks <- check_haploblocks(haploBlocks)
-      vcf <- check_vcf(vcf)
-      per_gene <- lapply(
-        unique(evaluation_per_variant$gene), 
-        predict_zygosity_genewise, 
-        evaluation_per_variant, 
-        bamDna,
-        bamRna,
-        showReadDetail,
-        printLog,
-        purity,
-        sex,
-        haploBlocks,
-        vcf,
-        distCutOff, 
-        logDir,
-        somCna,
-        snpQualityCutOff, 
-        phasingMode,
-        AllelicImbalancePhasing)
-      full_eval_per_gene <- lapply(per_gene, nth, n=2) %>% compact()
-      log_list_per_gene <- lapply(per_gene, nth, n=3)
-      if(length(full_eval_per_gene)!=0){
-        full_phasing_info <- lapply(full_eval_per_gene, nth, n=2) %>% 
-          compact() %>% 
-          bind_rows() 
-        detailed_RLP_info <- lapply(full_eval_per_gene, nth, n=3) %>% 
-          compact() %>% 
-          bind_rows() 
-        detailed_AIP_info <- lapply(full_eval_per_gene, nth, n=6) %>% 
-          compact() %>% 
-          bind_rows() 
-        comb_mat_phased <- lapply(full_eval_per_gene, nth, n=4) %>%
-          compact() %>%
-          Reduce(function(x,y)append(x,y),.)
-        comb_mat_info <- lapply(full_eval_per_gene, nth, n=5) %>%
-          compact() %>%
-          Reduce(function(x,y)append(x,y),.)
-        combined_eval_per_gene <- lapply(full_eval_per_gene, nth, n=1) %>% 
-          bind_rows() %>%
-          select(gene, n_mut, status, conf, eval_by, wt_cp, 
-                 warning, wt_cp_range, info,  phasing, eval_time_s)
-      } 
+    if(!is.null(geneModel)){
+      if(!nrow(evaluation_per_variant)==0){
+        bamDna <- check_bam(bamDna)
+        bamRna <- check_rna(bamRna)
+        logDir <- check_logDir(logDir)
+        haploBlocks <- check_haploblocks(haploBlocks)
+        vcf <- check_vcf(vcf)
+        per_gene <- lapply(
+          unique(evaluation_per_variant$gene), 
+          predict_zygosity_genewise, 
+          evaluation_per_variant, 
+          bamDna,
+          bamRna,
+          showReadDetail,
+          printLog,
+          purity,
+          sex,
+          haploBlocks,
+          vcf,
+          distCutOff, 
+          logDir,
+          somCna,
+          snpQualityCutOff, 
+          phasingMode,
+          AllelicImbalancePhasing)
+        full_eval_per_gene <- lapply(per_gene, nth, n=2) %>% compact()
+        log_list_per_gene <- lapply(per_gene, nth, n=3)
+        if(length(full_eval_per_gene)!=0){
+          full_phasing_info <- lapply(full_eval_per_gene, nth, n=2) %>% 
+            compact() %>% 
+            bind_rows() 
+          detailed_RLP_info <- lapply(full_eval_per_gene, nth, n=3) %>% 
+            compact() %>% 
+            bind_rows() 
+          detailed_AIP_info <- lapply(full_eval_per_gene, nth, n=6) %>% 
+            compact() %>% 
+            bind_rows() 
+          comb_mat_phased <- lapply(full_eval_per_gene, nth, n=4) %>%
+            compact() %>%
+            Reduce(function(x,y)append(x,y),.)
+          comb_mat_info <- lapply(full_eval_per_gene, nth, n=5) %>%
+            compact() %>%
+            Reduce(function(x,y)append(x,y),.)
+          combined_eval_per_gene <- lapply(full_eval_per_gene, nth, n=1) %>% 
+            bind_rows() %>%
+            select(gene, n_mut, status, conf, eval_by, wt_cp, 
+                   warning, wt_cp_range, info,  phasing, eval_time_s)
+        } 
+      }    
+      evaluation_per_gene <- bind_incdel_to_final_eval(
+        evaluation_per_variant_pre$df_incompletedels,
+        combined_eval_per_gene) 
     }
-    evaluation_per_gene <- bind_incdel_to_final_eval(
-      evaluation_per_variant_pre$df_incompletedels,
-      combined_eval_per_gene) %>%
-      transform(status=factor(status, 
-                              levels=c("all_copies_affected", "wt_copies_left", "undefined")))
-    
   }
   result_list <- list(
     eval_per_variant=evaluation_per_variant,

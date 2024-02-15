@@ -334,19 +334,21 @@ general_gr_checks <- function(obj, type, lab){
 }
 #' @keywords internal
 #' description follows
-check_gr_gene_model <- function(geneModel, is_pre_eval){
+check_gr_gene_model <- function(geneModel, is_pre_eval=FALSE){
   func_start()
-  . <- NULL
-  if(is_pre_eval==TRUE){
-    if(is.null(geneModel)){
-      res <- NULL
-    } else {
-      res <- general_gr_checks(geneModel, "gene_model", "geneModel")
-    }
-  } else if(is.null(geneModel)){
-    stop("input geneModel must not be NULL")
+  . <- warn <-res <- NULL
+
+  if(is.null(geneModel)){
+    warn <- "input geneModel is NULL -> Doing nothing"
   } else {
     res <- general_gr_checks(geneModel, "gene_model", "geneModel")
+  }
+  if(length(res)==0){
+    warn <- "input gene model contains no gene ranges -> Doing nothing"
+    res <- NULL
+  }
+  if(is_pre_eval==FALSE){
+    warning(warn)
   }
   func_end()
   return(res)
