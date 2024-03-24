@@ -14,7 +14,10 @@ assign_correct_colnames <- function(obj, type){
       nm_md(obj), paste(allowed_inputs("colnames_tcn", regex=TRUE), collapse="|")) %>%
       .[which(!is.na(.))]
     elementMetadata(obj)[,"tcn"] <- 
-      elementMetadata(obj)[,col_tcn] 
+      as.numeric(elementMetadata(obj)[,col_tcn]) 
+    
+    
+    
     ## define correct cna_type column
     if("LOH" %in% nm_md(obj)){
       obj$cna_type <- case_when(obj$LOH==TRUE ~ "LOH",
