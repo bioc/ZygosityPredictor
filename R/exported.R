@@ -448,12 +448,25 @@ predict_per_variant <- function(purity,
   }
   ## get variants not covered by CNV input
   if(!is.null(somSmallVars)){
-    gr_som_cov <- subsetByOverlaps(somSmallVars, somCna) 
-    som_covered <- gr_som_cov$mid
+    if(length(intersect(levels(seqnames(somCna)), levels(seqnames(somSmallVars))))>0){
+      gr_som_cov <- subsetByOverlaps(somSmallVars, somCna) 
+      som_covered <- gr_som_cov$mid     
+    } else {
+      stop("objects: somCna and somSmallVars have no seqnames in common... this ",
+           "might be due to different reference genomes used for the objects or ",
+           "simply deviating annotation formats of chromosomes: chr1...chrX or 1...X")
+    }
+ 
   }
   if(!is.null(germSmallVars)){
+    if(length(intersect(levels(seqnames(somCna)), levels(seqnames(germSmallVars))))>0){
     gr_germ_cov <- subsetByOverlaps(germSmallVars, somCna) 
     germ_covered <- gr_germ_cov$mid
+    } else {
+      stop("objects: somCna and germSmallVars have no seqnames in common... this ",
+           "might be due to different reference genomes used for the objects or ",
+           "simply deviating annotation formats of chromosomes: chr1...chrX or 1...X")
+    }
   }
   combined_uncovered <- combine_uncovered_input_variants(somSmallVars, 
                                                          germSmallVars,

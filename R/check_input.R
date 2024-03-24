@@ -201,6 +201,12 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
                          colnameCnaType){
   func_start()
   . <- NULL
+  if(length(intersect(levels(seqnames(somCna)), levels(seqnames(somSmallVars))))==0){    
+  
+    stop("objects: somCna and geneModel have no seqnames in common... this ",
+         "might be due to different reference genomes used for the objects or ",
+         "simply deviating annotation formats of chromosomes: chr1...chrX or 1...X")
+  }
   somCna <- general_gr_checks(somCna, "scna", "somCna")
   somCna$tcn_assumed <- FALSE
   ## check if there are segments without cna_type annotation
