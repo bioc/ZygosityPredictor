@@ -1378,13 +1378,13 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in,  which="all",
         if(length(combVcf)>0){
           combVcf$ALT <- unlist(lapply(combVcf$ALT, 
                                        function(x){as.character(x[[1]][1])}))
-          # gt <- VariantAnnotation::geno(loadedVcf)[[colname_gt]][,1] %>% 
-          #   as.character()
-          # af <- VariantAnnotation::info(loadedVcf)[[colname_af]]
-          # dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]] 
-          gt <- geno(loadedVcf)[[colname_gt]][,1] %>% as.character()
-          af <- info(loadedVcf)[[colname_af]]
-          dp4 <- info(loadedVcf)[[colname_dp4]] 
+          gt <- VariantAnnotation::geno(loadedVcf)[[colname_gt]][,1] %>%
+            as.character()
+          af <- VariantAnnotation::info(loadedVcf)[[colname_af]]
+          dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]]
+          # gt <- geno(loadedVcf)[[colname_gt]][,1] %>% as.character()
+          # af <- info(loadedVcf)[[colname_af]]
+          # dp4 <- info(loadedVcf)[[colname_dp4]] 
           combVcf$gt <- gt
           combVcf$dp4 <- dp4
           combVcf$af <- af
