@@ -1402,15 +1402,15 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in,  which="all",
                                 unlist(str_replace(chrom, "chr", "")), 
                                 "[^0-9]"))){
         #message("loading")
-        # loadedVcf <- VariantAnnotation::readVcf(VCF)
-        # gt <- VariantAnnotation::geno(loadedVcf)[[colname_gt]] %>%
-        #   as.character()
-        # af <- VariantAnnotation::info(loadedVcf)[[colname_af]]
-        # dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]]
         loadedVcf <- VariantAnnotation::readVcf(VCF)
-        gt <- geno(loadedVcf)[[colname_gt]] %>% as.character()
-        af <- info(loadedVcf)[[colname_af]]
-        dp4 <- info(loadedVcf)[[colname_dp4]]
+        gt <- VariantAnnotation::geno(loadedVcf)[[colname_gt]] %>%
+          as.character()
+        af <- VariantAnnotation::info(loadedVcf)[[colname_af]]
+        dp4 <- VariantAnnotation::info(loadedVcf)[[colname_dp4]]
+        loadedVcf <- VariantAnnotation::readVcf(VCF)
+        # gt <- geno(loadedVcf)[[colname_gt]] %>% as.character()
+        # af <- info(loadedVcf)[[colname_af]]
+        # dp4 <- info(loadedVcf)[[colname_dp4]]
         rangesVcf <- rowRanges(loadedVcf) 
         rangesVcf$gt <- gt
         rangesVcf$af <- af

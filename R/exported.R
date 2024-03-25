@@ -341,6 +341,7 @@ aff_som_copies <- function(chr, af, tcn, purity, sex, c_normal=NULL){
 #' @param verbose logical, default=FALSE; prints functions that are called
 #' @return A list containing tibbles with all input variants
 #' @importFrom IRanges subsetByOverlaps
+#' @importFrom GenomicRanges seqnames
 #' @export
 #' @examples 
 #' cnvs  = GenomicRanges::GRanges(
