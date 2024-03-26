@@ -145,9 +145,9 @@ get_next_path <- function(comb, distCutOff){
         }
   if(length(intersect(as.numeric(mains), 
                       c(connections$mut_id1, connections$mut_id2)))==2){
-    graph <- graph_from_data_frame(connections, directed = FALSE)
+    graph <- igraph::graph_from_data_frame(connections, directed = FALSE)
     #all_paths <- igraph::all_shortest_paths(graph, from = mains[1], to = mains[2], mode = "all")$res 
-    all_paths <- all_shortest_paths(graph, from = mains[1], to = mains[2], mode = "all")$res  
+    all_paths <- igraph::all_shortest_paths(graph, from = mains[1], to = mains[2], mode = "all")$res  
     if(length(all_paths)>0){
         poss <- list()
         for (PATH in all_paths){
