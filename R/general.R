@@ -662,7 +662,8 @@ predict_zygosity_genewise <- function(GENE,
                                       somCna, 
                                       snpQualityCutOff, 
                                       phasingMode,
-                                      AllelicImbalancePhasing){
+                                      AllelicImbalancePhasing, 
+                                      ZP_env){
   #func_start()
   vm("predict_zygosity_genewise", 1) ## do not replcae!!!
   start_gene_eval <- Sys.time()
@@ -712,7 +713,7 @@ predict_zygosity_genewise <- function(GENE,
                                    haploBlocks, vcf, distCutOff, printLog,
                                    geneDir, showReadDetail, 
                                    snpQualityCutOff, phasingMode, 
-                                   AllelicImbalancePhasing)
+                                   AllelicImbalancePhasing, ZP_env)
      #print(full_phasing_result)
       all_comb <- full_phasing_result[[1]] %>%
         mutate(gene=GENE)
@@ -911,17 +912,21 @@ remove_global_vars <- function(){
   func_start()
   #rlang::env_unlock(globalenv())
   suppressWarnings(
-    rm(global_ZygosityPredictor_variable_call_depth, 
+    rm(
+      ## options
+      global_ZygosityPredictor_variable_call_depth, 
        global_ZygosityPredictor_variable_log_depth, 
        global_ZygosityPredictor_variable_timelist, 
        global_ZygosityPredictor_variable_debug, 
        global_ZygosityPredictor_variable_verbose, 
        global_ZygosityPredictor_variable_printLog, 
+      ## data 
        global_ZygosityPredictor_variable_mat_info, 
        global_ZygosityPredictor_variable_mat_phased, 
        global_ZygosityPredictor_variable_mat_dist, 
        global_ZygosityPredictor_variable_main_muts, 
        global_ZygosityPredictor_variable_main_pos, 
+      ## embedded 
        global_ZygosityPredictor_variable_embedded#,
        #inherits = TRUE
        )

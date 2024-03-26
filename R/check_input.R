@@ -405,6 +405,7 @@ check_purity <- function(purity){
 #' @keywords internal
 #' description follows
 check_ploidy <- function(ploidy){
+  #ZP_env$test <- "this is a test"
   func_start()
   if(is.null(ploidy)){
     res <- NULL
@@ -425,6 +426,7 @@ check_ploidy <- function(ploidy){
 #' @importFrom stringr str_detect
 check_sex <- function(sex){
   . <- NULL
+  #ZP_env$test <- "bit this is a second test"
   allowed_sex <- allowed_inputs("sex_names")
   if(!sex %in% allowed_sex){
     allowed_sex_to_print <- paste(allowed_sex, collapse = "\', \'") %>% 
