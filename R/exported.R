@@ -701,11 +701,14 @@ predict_zygosity <- function(purity,
     detailed_phasing_info <- comb_mat_phased <- comb_mat_info <- NULL
   ## define global debugging variable
   set_global_variables(debug, verbose, printLog)
+  ZP_env <- new.env()
   global_ZygosityPredictor_variable_embedded <<- TRUE
   ## for parent function this must be here after gobal variable edfinition
   func_start()
   ploidy <- check_ploidy(ploidy)
+  #print(ZP_env$test)
   sex <- check_sex(sex)
+  #print(ZP_env$test)
   assumeSomCnaGaps <- check_opt_assgap(assumeSomCnaGaps, ploidy)
   geneModel <- check_gr_gene_model(geneModel)
   somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
@@ -754,7 +757,8 @@ predict_zygosity <- function(purity,
           somCna,
           snpQualityCutOff, 
           phasingMode,
-          AllelicImbalancePhasing)
+          AllelicImbalancePhasing,
+          ZP_env)
         full_eval_per_gene <- lapply(per_gene, nth, n=2) %>% compact()
         log_list_per_gene <- lapply(per_gene, nth, n=3)
         if(length(full_eval_per_gene)!=0){

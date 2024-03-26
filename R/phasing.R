@@ -15,27 +15,27 @@ get_xy_index <- function(inp, nr){
   }) %>% Reduce(function(x,y)rbind(x,y),.)
   
 }
-get_main_mut_pos <- function(){
-  lm <- length(global_ZygosityPredictor_variable_main_muts)
+get_main_mut_pos <- function(ZP_env){
+  lm <- length(ZP_env$global_ZygosityPredictor_variable_main_muts)
   lapply(1:lm, function(i){
-    s <- (i-1)*nrow(global_ZygosityPredictor_variable_mat_phased)+1
-    e <- (i-1)*nrow(global_ZygosityPredictor_variable_mat_phased)+lm
+    s <- (i-1)*nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased)+1
+    e <- (i-1)*nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased)+lm
     return(seq(s,e,1))
   }) %>% unlist() %>%
     return()
 }
-unphased_main <- function(){
-  lm <- seq(1,length(global_ZygosityPredictor_variable_main_muts),1)
-  which(is.na(global_ZygosityPredictor_variable_mat_phased[lm, lm]))
+unphased_main <- function(ZP_env){
+  lm <- seq(1,length(ZP_env$global_ZygosityPredictor_variable_main_muts),1)
+  which(is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased[lm, lm]))
 }
-unknown_main <- function(){
-  all_unknown <- which(upper.tri(global_ZygosityPredictor_variable_mat_phased)&global_ZygosityPredictor_variable_mat_phased==0)
-  intersect(all_unknown, get_main_mut_pos())
+unknown_main <- function(ZP_env){
+  all_unknown <- which(upper.tri(ZP_env$global_ZygosityPredictor_variable_mat_phased)&ZP_env$global_ZygosityPredictor_variable_mat_phased==0)
+  intersect(all_unknown, get_main_mut_pos(ZP_env))
 }
 #' @importFrom stringr %>%
 #' @importFrom dplyr select filter mutate bind_rows
 #' @importFrom tibble as_tibble
-add_snps_to_matrices <- function(snps){
+add_snps_to_matrices <- function(snps, ZP_env){
   func_start()
   snps_hap <- snps[which(!is.na(snps$block_final)),] %>%
     select(mut_id, block_final, gt=gt_final)
@@ -52,7 +52,7 @@ add_snps_to_matrices <- function(snps){
         for (j in (i+1):nrow(snps_in_hap)) {
           comparison_result <- ifelse(snps_in_hap$gt[i] == snps_in_hap$gt[j], 1, 2)
           # Store the results in the result_matrix
-          result_matrix[nrow(snps_in_hap)-j+1, 1] <- get_single_index(snps_in_hap$id[j], snps_in_hap$id[i], nrow(global_ZygosityPredictor_variable_mat_phased))
+          result_matrix[nrow(snps_in_hap)-j+1, 1] <- get_single_index(snps_in_hap$id[j], snps_in_hap$id[i], nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))
           result_matrix[nrow(snps_in_hap)-j+1, 2] <- comparison_result
         }
         res_list[[i]] <- result_matrix
@@ -68,7 +68,7 @@ add_snps_to_matrices <- function(snps){
     }
     return(new)
   })  %>% bind_rows()
-  append_matrices(known_combs, iterate=FALSE)
+  append_matrices(known_combs, ZP_env, iterate=FALSE)
   func_end()
 }
 eval_rare_case <- function(all_comb){
@@ -91,51 +91,57 @@ eval_rare_case <- function(all_comb){
   }
   return(rare_case)
 }
-create_phasing_matrices <- function(all_variants, all_pos, distCutOff){
-  global_ZygosityPredictor_variable_mat_dist <<- make_dist_matrix(all_pos, all_variants, distCutOff) 
-  global_ZygosityPredictor_variable_main_muts <<- all_variants
-  global_ZygosityPredictor_variable_main_pos <<- all_pos
-  global_ZygosityPredictor_variable_mat_phased <<- global_ZygosityPredictor_variable_mat_dist
-  global_ZygosityPredictor_variable_mat_phased[global_ZygosityPredictor_variable_mat_phased!=0] <<- NA  
-  global_ZygosityPredictor_variable_mat_info <<- global_ZygosityPredictor_variable_mat_phased
+create_phasing_matrices <- function(all_variants, all_pos, distCutOff, ZP_env){
+  ZP_env$global_ZygosityPredictor_variable_mat_dist <- make_dist_matrix(all_pos, all_variants, distCutOff) 
+  ZP_env$global_ZygosityPredictor_variable_main_muts <- all_variants
+  ZP_env$global_ZygosityPredictor_variable_main_pos <- all_pos
+  ZP_env$global_ZygosityPredictor_variable_mat_phased <- ZP_env$global_ZygosityPredictor_variable_mat_dist
+  ZP_env$global_ZygosityPredictor_variable_mat_phased[ZP_env$global_ZygosityPredictor_variable_mat_phased!=0] <- NA  
+  ZP_env$global_ZygosityPredictor_variable_mat_info <- ZP_env$global_ZygosityPredictor_variable_mat_phased
+  # global_ZygosityPredictor_variable_mat_dist <<- make_dist_matrix(all_pos, all_variants, distCutOff) 
+  # global_ZygosityPredictor_variable_main_muts <<- all_variants
+  # global_ZygosityPredictor_variable_main_pos <<- all_pos
+  # global_ZygosityPredictor_variable_mat_phased <<- global_ZygosityPredictor_variable_mat_dist
+  # global_ZygosityPredictor_variable_mat_phased[global_ZygosityPredictor_variable_mat_phased!=0] <<- NA  
+  # global_ZygosityPredictor_variable_mat_info <<- global_ZygosityPredictor_variable_mat_phased
 }
-append_phasing_matrices <- function(all_variants, all_pos, distCutOff){
+append_phasing_matrices <- function(all_variants, all_pos, distCutOff, ZP_env){
   func_start()
-  global_ZygosityPredictor_variable_mat_dist <<- make_dist_matrix(c(global_ZygosityPredictor_variable_main_pos, all_pos), 
-                                c(global_ZygosityPredictor_variable_main_muts, all_variants), 
+  ZP_env$global_ZygosityPredictor_variable_mat_dist <- make_dist_matrix(c(ZP_env$global_ZygosityPredictor_variable_main_pos, all_pos), 
+                                c(ZP_env$global_ZygosityPredictor_variable_main_muts, all_variants), 
                                 distCutOff) 
-  mat_phased_main <- global_ZygosityPredictor_variable_mat_phased
-  mat_info_main <- global_ZygosityPredictor_variable_mat_info
-  global_ZygosityPredictor_variable_mat_phased <<- global_ZygosityPredictor_variable_mat_dist
-  global_ZygosityPredictor_variable_mat_phased[global_ZygosityPredictor_variable_mat_phased!=0] <<- NA 
-  global_ZygosityPredictor_variable_mat_info <<- global_ZygosityPredictor_variable_mat_phased
-  nm <- length(global_ZygosityPredictor_variable_main_muts)
-  global_ZygosityPredictor_variable_mat_phased[c(1:nm), c(1:nm)] <<- mat_phased_main
-  global_ZygosityPredictor_variable_mat_info[c(1:nm), c(1:nm)] <<- mat_info_main
+  mat_phased_main <- ZP_env$global_ZygosityPredictor_variable_mat_phased
+  mat_info_main <- ZP_env$global_ZygosityPredictor_variable_mat_info
+  ZP_env$global_ZygosityPredictor_variable_mat_phased <- ZP_env$global_ZygosityPredictor_variable_mat_dist
+  ZP_env$global_ZygosityPredictor_variable_mat_phased[ZP_env$global_ZygosityPredictor_variable_mat_phased!=0] <- NA 
+  ZP_env$global_ZygosityPredictor_variable_mat_info <- ZP_env$global_ZygosityPredictor_variable_mat_phased
+  nm <- length(ZP_env$global_ZygosityPredictor_variable_main_muts)
+  ZP_env$global_ZygosityPredictor_variable_mat_phased[c(1:nm), c(1:nm)] <- mat_phased_main
+  ZP_env$global_ZygosityPredictor_variable_mat_info[c(1:nm), c(1:nm)] <- mat_info_main
   func_end()
 }
 #' @importFrom magrittr %>%
 #' @importFrom purrr set_names
-get_main_mut_conns <- function(){
-  lapply(global_ZygosityPredictor_variable_main_muts, function(M){
-    length(c(which(global_ZygosityPredictor_variable_mat_phased[M,]!=0|is.na(global_ZygosityPredictor_variable_mat_phased[M,])),
-             which(global_ZygosityPredictor_variable_mat_phased[,M]!=0|is.na(global_ZygosityPredictor_variable_mat_phased[,M]))
+get_main_mut_conns <- function(ZP_env){
+  lapply(ZP_env$global_ZygosityPredictor_variable_main_muts, function(M){
+    length(c(which(ZP_env$global_ZygosityPredictor_variable_mat_phased[M,]!=0|is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased[M,])),
+             which(ZP_env$global_ZygosityPredictor_variable_mat_phased[,M]!=0|is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased[,M]))
     ))
   }) %>% unlist() %>%
-    set_names(global_ZygosityPredictor_variable_main_muts)
+    set_names(ZP_env$global_ZygosityPredictor_variable_main_muts)
 }
 #' @importFrom magrittr %>%
 #' @importFrom tibble as_tibble
 #' @importFrom purrr set_names
 #' @importFrom igraph graph_from_data_frame all_shortest_paths
-get_next_path <- function(comb, distCutOff){
+get_next_path <- function(comb, ZP_env){
   func_start()
       
-  mains <- as.character(sort(get_xy_index(as.numeric(comb), nrow(global_ZygosityPredictor_variable_mat_phased))))
+  mains <- as.character(sort(get_xy_index(as.numeric(comb), nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))))
 
   ldc <- 1000
-        open_conns <- which((is.na(global_ZygosityPredictor_variable_mat_phased)|global_ZygosityPredictor_variable_mat_phased>0)&global_ZygosityPredictor_variable_mat_dist<ldc) %>%
-          get_xy_index(.,nrow(global_ZygosityPredictor_variable_mat_phased))
+        open_conns <- which((is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased)|ZP_env$global_ZygosityPredictor_variable_mat_phased>0)&ZP_env$global_ZygosityPredictor_variable_mat_dist<ldc) %>%
+          get_xy_index(.,nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))
         if(length(dim(open_conns))!=2){
           connections <- as_tibble(t(open_conns)) %>%
             set_names(c("mut_id1", "mut_id2"))
@@ -155,9 +161,9 @@ get_next_path <- function(comb, distCutOff){
           res <- c()
           for(i in c(1:(length(P)-1))){
             mv <- sort(c(P[i], P[i+1]))
-            conn <- get_single_index(mv[2], mv[1], nrow(global_ZygosityPredictor_variable_mat_phased))
-            res[i] <- c(res, global_ZygosityPredictor_variable_mat_phased[conn])
-            if(is.na(global_ZygosityPredictor_variable_mat_phased[conn])){
+            conn <- get_single_index(mv[2], mv[1], nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))
+            res[i] <- c(res, ZP_env$global_ZygosityPredictor_variable_mat_phased[conn])
+            if(is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased[conn])){
               poss <- c(poss, conn)
             }
           }
@@ -175,14 +181,15 @@ get_next_path <- function(comb, distCutOff){
 #' @importFrom purrr set_names
 #' @importFrom stringr %>%
 #' @importFrom dplyr left_join
-prioritize_combination <- function(){
+prioritize_combination <- function(ZP_env){
   func_start()
-  unrel_rows <- rownames(global_ZygosityPredictor_variable_mat_phased) %>% .[which(!. %in% colnames(global_ZygosityPredictor_variable_mat_phased))]
-  mat_tmp <- global_ZygosityPredictor_variable_mat_dist
+  unrel_rows <- rownames(ZP_env$global_ZygosityPredictor_variable_mat_phased) %>% 
+    .[which(!. %in% colnames(ZP_env$global_ZygosityPredictor_variable_mat_phased))]
+  mat_tmp <- ZP_env$global_ZygosityPredictor_variable_mat_dist
   mat_tmp[unrel_rows,] <- NA
   mat_tmp[,unrel_rows] <- NA
-  mat_tmp[c((length(global_ZygosityPredictor_variable_main_muts)+1):nrow(global_ZygosityPredictor_variable_mat_phased)),] <- NA
-  unphased <- which(is.na(global_ZygosityPredictor_variable_mat_phased))
+  mat_tmp[c((length(ZP_env$global_ZygosityPredictor_variable_main_muts)+1):nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased)),] <- NA
+  unphased <- which(is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased))
   relevant_dists <- mat_tmp[unphased] 
   relevant_dists[which(relevant_dists==0)] <- NA
   ## to suppress warning: Warning: no non-missing arguments to min; returning Inf
@@ -191,13 +198,13 @@ prioritize_combination <- function(){
   )
   ## pick first one, if two have the same distance
   if(length(shortest)==0){
-    main_mut_conns <- get_main_mut_conns()
+    main_mut_conns <- get_main_mut_conns(ZP_env)
     df_mmc <- tibble(m=names(main_mut_conns),
                      n=main_mut_conns)
-    uc <- unknown_main()
+    uc <- unknown_main(ZP_env)
     if(length(uc)>0){
       df_unknown_pre <- lapply(uc, function(C){
-        sort(get_xy_index(C, nrow(global_ZygosityPredictor_variable_mat_phased))) %>%
+        sort(get_xy_index(C, nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))) %>%
           paste0("m",.) %>%
           set_names(c("m1", "m2")) %>%
           c(.,comb=C)
@@ -209,9 +216,9 @@ prioritize_combination <- function(){
         filter(n1>0&n2>0)
       if(nrow(df_unknown)>0){
         ## now check available paths
-        next_path <- get_next_path(df_unknown[1,]$comb)
+        next_path <- get_next_path(df_unknown[1,]$comb, ZP_env)
         if(!is.null(next_path)){
-          next_comb <- get_xy_index(next_path, nrow(global_ZygosityPredictor_variable_mat_phased))
+          next_comb <- get_xy_index(next_path, nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))
         } else {
           next_comb <- NULL
         }      
@@ -222,7 +229,7 @@ prioritize_combination <- function(){
       next_comb <- NULL
     }
   } else {
-    next_comb <- get_xy_index(shortest[1], nrow(global_ZygosityPredictor_variable_mat_phased))
+    next_comb <- get_xy_index(shortest[1], nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))
   }
   func_end()
   return(next_comb)
@@ -231,16 +238,16 @@ prioritize_combination <- function(){
 #' @importFrom tibble tibble
 #' @importFrom purrr set_names
 #' @importFrom dplyr bind_rows left_join select filter
-aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_number_phasing=NULL){
+aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_number_phasing=NULL, ZP_env){
   func_start()
   #print(all_combs)
   phasing_all_combs <- lapply(all_combs, function(mmp){
-    comb_vec <- paste0("m",sort(get_xy_index(mmp, nrow(global_ZygosityPredictor_variable_mat_phased))))
+    comb_vec <- paste0("m",sort(get_xy_index(mmp, nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))))
     comb <- comb_vec %>% paste(collapse="-")    
     df_gene_relcomb <- df_gene %>%
         filter(mut_id %in% comb_vec)
     min_tcn <- min(df_gene_relcomb$tcn)
-    nconst <- global_ZygosityPredictor_variable_mat_phased[mmp]
+    nconst <- ZP_env$global_ZygosityPredictor_variable_mat_phased[mmp]
     const <- get_string_const(nconst)      
     min_poss_wt_cp <- calc_left_wt_copies(min_tcn,
                                          2,
@@ -261,12 +268,12 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
     if(nconst>0){
       ## status was defined
       ## calculate confidence
-      used_combs <- global_ZygosityPredictor_variable_mat_info[mmp] %>% 
+      used_combs <- ZP_env$global_ZygosityPredictor_variable_mat_info[mmp] %>% 
         str_split("-") %>% 
         unlist() %>%
         as.numeric()
       ## check if copynumber phasing was applied
-      if(!str_detect(global_ZygosityPredictor_variable_mat_info[mmp], "som")){
+      if(!str_detect(ZP_env$global_ZygosityPredictor_variable_mat_info[mmp], "som")){
         extracted_combs <- read_level_phasing_info %>% filter(comb %in% used_combs) 
         conf <- extracted_combs %>%
           mutate(ep=ifelse(nconst==2, 1-p_same, 1-p_diff)) %>%
@@ -276,9 +283,9 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
         subclonal <- paste(as.numeric(extracted_combs$subclonal), collapse="-")
         
         phasing <- case_when(
-          str_detect(global_ZygosityPredictor_variable_mat_info[mmp], "h") ~ "haploblock-phasing",
-          #str_detect(global_ZygosityPredictor_variable_mat_info[mmp], "s") ~ "imbalance",
-          str_detect(global_ZygosityPredictor_variable_mat_info[mmp], "-") ~ "indirect-phasing",
+          str_detect(ZP_env$global_ZygosityPredictor_variable_mat_info[mmp], "h") ~ "haploblock-phasing",
+          #str_detect(ZP_env$global_ZygosityPredictor_variable_mat_info[mmp], "s") ~ "imbalance",
+          str_detect(ZP_env$global_ZygosityPredictor_variable_mat_info[mmp], "-") ~ "indirect-phasing",
           TRUE ~ "direct-phasing"
         )
       } else {
@@ -288,7 +295,7 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
         unplausible <- NA
         subclonal <- NA
       }
-      via <- as.character(global_ZygosityPredictor_variable_mat_info[mmp])        
+      via <- as.character(ZP_env$global_ZygosityPredictor_variable_mat_info[mmp])        
       wt_cp <- calc_left_wt_copies(min_tcn,
                                   nconst,
                                   df_gene_relcomb$aff_cp[1],
@@ -613,7 +620,7 @@ classify_reads <- function(ref_pos1,
 #' @importFrom tibble tibble
 #' @importFrom dplyr mutate
 phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna,  
-                              geneDir, phasing_type, showReadDetail){
+                              geneDir, phasing_type, showReadDetail, ZP_env){
   func_start()
   append_loglist("Phasing:", comb)
   ## predefine empty output
@@ -665,7 +672,7 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna,
                                                  
     ) %>%  
       mutate(
-        dist=global_ZygosityPredictor_variable_mat_dist[comb],
+        dist=ZP_env$global_ZygosityPredictor_variable_mat_dist[comb],
         class_comb=paste(mat_gene_relcomb[,"class"][[2]], 
                          mat_gene_relcomb[,"class"][[1]], 
                          sep="-"),
@@ -677,24 +684,24 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna,
   return(classified_main_comb)
 }
 #' @importFrom magrittr %>%
-append_matrices <- function(classified_main_comb, iterate=TRUE){
+append_matrices <- function(classified_main_comb, ZP_env, iterate=TRUE){
   func_start()
   if(nrow(classified_main_comb)>0){
-    mat_old <- global_ZygosityPredictor_variable_mat_phased
+    mat_old <- ZP_env$global_ZygosityPredictor_variable_mat_phased
     lapply(seq(1,nrow(classified_main_comb)), function(C){
       #print(C)
       #print(classified_main_comb[C,]$phasing)
       #print(classified_main_comb[C,]$nconst)
-      global_ZygosityPredictor_variable_mat_phased[classified_main_comb[C,]$comb] <<- 
+      ZP_env$global_ZygosityPredictor_variable_mat_phased[classified_main_comb[C,]$comb] <- 
         classified_main_comb[C,]$nconst
-      global_ZygosityPredictor_variable_mat_info[classified_main_comb[C,]$comb] <<- 
+      ZP_env$global_ZygosityPredictor_variable_mat_info[classified_main_comb[C,]$comb] <- 
         classified_main_comb[C,]$phasing
       return()
     })
     #print(global_ZygosityPredictor_variable_mat_phased)
     if(iterate==TRUE){
-      something_changed <- sum(mat_old, na.rm = TRUE)!=sum(global_ZygosityPredictor_variable_mat_phased, na.rm = TRUE)
-      mat_new <- global_ZygosityPredictor_variable_mat_phased
+      something_changed <- sum(mat_old, na.rm = TRUE)!=sum(ZP_env$global_ZygosityPredictor_variable_mat_phased, na.rm = TRUE)
+      mat_new <- ZP_env$global_ZygosityPredictor_variable_mat_phased
       mat_new[is.na(mat_new)] <- 0
       mat_old[is.na(mat_old)] <- 0
       changes <- which(!mat_new==mat_old) 
@@ -718,21 +725,21 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
                 notxf <- m12[which(!m12 %in% c(p1,p2))]
                 if(length(notxf)>=1){
                   notx <- min(notxf)
-                  if(is.na(global_ZygosityPredictor_variable_mat_phased[p1,p2])|global_ZygosityPredictor_variable_mat_phased[p1,p2]==0){
+                  if(is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased[p1,p2])|ZP_env$global_ZygosityPredictor_variable_mat_phased[p1,p2]==0){
                     combined_info <- paste(
-                      c(global_ZygosityPredictor_variable_mat_info[
+                      c(ZP_env$global_ZygosityPredictor_variable_mat_info[
                         min(c(notx, p1)),
                         max(c(notx, p1))
-                      ], global_ZygosityPredictor_variable_mat_info[
+                      ], ZP_env$global_ZygosityPredictor_variable_mat_info[
                         min(c(notx, p2)),
                         max(c(notx, p2))                   
                       ]), 
                       collapse="-")
-                    global_ZygosityPredictor_variable_mat_info[p1,p2] <<- combined_info   
+                    ZP_env$global_ZygosityPredictor_variable_mat_info[p1,p2] <- combined_info   
                   }
                 } 
-                if(is.na(global_ZygosityPredictor_variable_mat_phased[p1,p2])|global_ZygosityPredictor_variable_mat_phased[p1,p2]==0){
-                  global_ZygosityPredictor_variable_mat_phased[p1,p2] <<- 1
+                if(is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased[p1,p2])|ZP_env$global_ZygosityPredictor_variable_mat_phased[p1,p2]==0){
+                  ZP_env$global_ZygosityPredictor_variable_mat_phased[p1,p2] <- 1
                 }
               }
             }
@@ -745,20 +752,20 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
                 notxf <- m12[which(!m12 %in% c(x,j))]
                 if(length(notxf)>=1){
                   notx <- min(notxf)
-                  if(is.na(global_ZygosityPredictor_variable_mat_phased[p1,p2])|global_ZygosityPredictor_variable_mat_phased[p1,p2]==0){
-                    global_ZygosityPredictor_variable_mat_info[p1, p2] <<- paste(
-                      c(global_ZygosityPredictor_variable_mat_info[
+                  if(is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased[p1,p2])|ZP_env$global_ZygosityPredictor_variable_mat_phased[p1,p2]==0){
+                    ZP_env$global_ZygosityPredictor_variable_mat_info[p1, p2] <- paste(
+                      c(ZP_env$global_ZygosityPredictor_variable_mat_info[
                         min(c(notx, x)),
                         max(c(notx, x))
-                      ], global_ZygosityPredictor_variable_mat_info[
+                      ], ZP_env$global_ZygosityPredictor_variable_mat_info[
                         min(c(notx, j)),
                         max(c(notx, j))                   
                       ]), 
                       collapse="-")
                   }
                 }
-                if(is.na(global_ZygosityPredictor_variable_mat_phased[p1, p2])|global_ZygosityPredictor_variable_mat_phased[p1, p2]==0){
-                  global_ZygosityPredictor_variable_mat_phased[p1, p2] <<- 2
+                if(is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased[p1, p2])|ZP_env$global_ZygosityPredictor_variable_mat_phased[p1, p2]==0){
+                  ZP_env$global_ZygosityPredictor_variable_mat_phased[p1, p2] <- 2
                 }        
               }
             }
@@ -773,28 +780,28 @@ append_matrices <- function(classified_main_comb, iterate=TRUE){
 #' @importFrom tibble tibble
 #' @importFrom dplyr  bind_rows
 perform_direct_phasing <- function(df_gene, bamDna, bamRna, 
-                                    printLog, showReadDetail, geneDir){
+                                    printLog, showReadDetail, geneDir, ZP_env){
   func_start()
   mat_gene <- as.matrix(df_gene)
   rownames(mat_gene) <- mat_gene[,"mut_id"]
   phasing_type <- "direct"
   read_level_phasing_info <- tibble()
-  unphased <- which(is.na(global_ZygosityPredictor_variable_mat_phased))
+  unphased <- which(is.na(ZP_env$global_ZygosityPredictor_variable_mat_phased))
   i <- 1
   while(i <= length(unphased)){
     ## as long as there are unphased combinations, try to phase
     comb <- unphased[i]
-    relcombxy <- get_xy_index(comb, nrow(global_ZygosityPredictor_variable_mat_phased))
+    relcombxy <- get_xy_index(comb, nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))
     mat_gene_relcomb <- mat_gene[relcombxy,]
     
     classified_main_comb <- phase_combination(mat_gene_relcomb, comb, bamDna, bamRna, 
-                                               geneDir, phasing_type, showReadDetail)
+                                               geneDir, phasing_type, showReadDetail, ZP_env)
     read_level_phasing_info <- bind_rows(read_level_phasing_info,
                               classified_main_comb)
     i <- i+1
   }
   #print(read_level_phasing_info)
-  append_matrices(read_level_phasing_info)
+  append_matrices(read_level_phasing_info, ZP_env)
   func_end()
   return(read_level_phasing_info)
   # return(list(status=NULL,
@@ -804,9 +811,9 @@ perform_direct_phasing <- function(df_gene, bamDna, bamRna,
 perform_indirect_phasing <- function(df_gene, vcf, bamDna, bamRna, haploBlocks,  
                                      distCutOff, somCna, snpQualityCutOff, 
                                      purity, sex, geneDir, read_level_phasing_info, 
-                                     showReadDetail){
+                                     showReadDetail, ZP_env){
   func_start()
-  if(length(unknown_main())>0&!is.null(vcf)){
+  if(length(unknown_main(ZP_env))>0&!is.null(vcf)){
     append_loglist("unphased combinations left --> Initialize SNP phasing")
     ## missing combinations in main muts --> start secondary phasing approaches
     lsnps <- load_snps(df_gene, vcf, haploBlocks,  distCutOff,  somCna, snpQualityCutOff)
@@ -844,29 +851,29 @@ perform_indirect_phasing <- function(df_gene, vcf, bamDna, bamRna, haploBlocks,
             TRUE ~ NA
           )
         )
-      append_phasing_matrices(snps$mut_id, snps$start, distCutOff)
-      add_snps_to_matrices(snps)
+      append_phasing_matrices(snps$mut_id, snps$start, distCutOff, ZP_env)
+      add_snps_to_matrices(snps, ZP_env)
       ## build main daatframe of muts and snps and annotate haploblocks and segments of allelic imbalance
       df <- bind_rows(
         df_gene %>% select(chr, pos, ref, alt, class, af, mut_id),
         snps %>% select(chr=seqnames, pos=start, ref=REF, alt=ALT, af, mut_id, gt=gt_final) %>% mutate(class="snp")
       )
-      to_phase <- prioritize_combination()
+      to_phase <- prioritize_combination(ZP_env)
       i <- 1
-      while(!is.null(to_phase)&length(unknown_main())>0){
+      while(!is.null(to_phase)&length(unknown_main(ZP_env))>0){
         append_loglist("Phasing combination:", paste(paste0(to_phase), collapse="-"))
         
         mat_gene_relcomb <- df[to_phase,] %>% as.matrix()
         comb <- get_single_index(to_phase[1],
                                  to_phase[2],
-                                 nrow(global_ZygosityPredictor_variable_mat_phased))
+                                 nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))
         classified_main_comb <- phase_combination(mat_gene_relcomb, comb,
                                                   bamDna, bamRna,  
-                                                  geneDir, comb, showReadDetail)
-        append_matrices(classified_main_comb)
+                                                  geneDir, comb, showReadDetail, ZP_env)
+        append_matrices(classified_main_comb, ZP_env)
         read_level_phasing_info <- bind_rows(read_level_phasing_info,
                                   classified_main_comb)
-        to_phase <- prioritize_combination()
+        to_phase <- prioritize_combination(ZP_env)
         i <- i +1
       }
       store_log(geneDir, df, "df_snps_muts.tsv")
@@ -1150,7 +1157,7 @@ aggregate_likelihoods <- function(mut_template, gt_lk_per_mut, allele_specific_g
   func_end()
   return(aggregated_likelihoods)
 }
-perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna, purity, sex){
+perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna, purity, sex, ZP_env){
   func_start()
   if(AllelicImbalancePhasing){
   ## works only if both variants are in the same segment
@@ -1182,7 +1189,7 @@ perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna
                 mutate(
                   comb=get_single_index(as.numeric(unlist(str_replace(mut_id2, "m", ""))), 
                                         as.numeric(unlist(str_replace(mut_id1, "m", ""))), 
-                                        nrow(global_ZygosityPredictor_variable_mat_phased)),
+                                        nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased)),
                   phasing=paste0("som-s", SEG_ID),
                   nconst=case_when(
                     as.numeric(p_same)>=as.numeric(p_diff) ~ 1,
@@ -1219,7 +1226,7 @@ perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna
     }) %>%
       bind_rows()
     #print(per_segment)
-    append_matrices(per_segment)
+    append_matrices(per_segment, ZP_env)
     ##print(global_ZygosityPredictor_variable_mat_phased)
     ##print(global_ZygosityPredictor_variable_mat_info)
   ## output needs this:
@@ -1251,18 +1258,20 @@ phase <- function(df_gene,
                   snpQualityCutOff=1, 
                   phasingMode="full",
                   AllelicImbalancePhasing=FALSE, 
-                  verbose=FALSE){
+                  #verbose=FALSE,
+                  ZP_env){
   #vm(as.character(sys.call()[1]),  1)
   func_start()
   ## (1): define all combinations of variants to be phased
-  create_phasing_matrices(df_gene$mut_id, df_gene$pos, distCutOff)
-  unphased <- unphased_main()
+  create_phasing_matrices(df_gene$mut_id, df_gene$pos, distCutOff, ZP_env)
+  #print(ZP_env$global_ZygosityPredictor_variable_mat_dist)
+  unphased <- unphased_main(ZP_env)
   append_loglist(length(unphased), "main combinations to phase,", 
-                 abs(length(unphased)-length(global_ZygosityPredictor_variable_mat_phased[upper.tri(global_ZygosityPredictor_variable_mat_phased)])), 
+                 abs(length(unphased)-length(ZP_env$global_ZygosityPredictor_variable_mat_phased[upper.tri(ZP_env$global_ZygosityPredictor_variable_mat_phased)])), 
                  "are over distCutOff")
   ## (2): perform direct phasing between variants (read-based)
   direct_phasing <- perform_direct_phasing(df_gene, bamDna, bamRna, printLog, 
-                                           showReadDetail, geneDir)
+                                           showReadDetail, geneDir, ZP_env)
  #print(0)
  #print(df_gene)
   #print(global_ZygosityPredictor_variable_mat_phased)
@@ -1270,10 +1279,10 @@ phase <- function(df_gene,
                                            haploBlocks,  distCutOff, somCna, 
                                            snpQualityCutOff, purity, sex, 
                                            geneDir, direct_phasing, 
-                                           showReadDetail)
+                                           showReadDetail, ZP_env)
   
   #print(global_ZygosityPredictor_variable_mat_phased)
-  copy_number_phasing <- perform_copy_number_phasing(df_gene, AllelicImbalancePhasing, bamDna, purity, sex)
+  copy_number_phasing <- perform_copy_number_phasing(df_gene, AllelicImbalancePhasing, bamDna, purity, sex, ZP_env)
   #print(global_ZygosityPredictor_variable_mat_phased)
   # if(nrow(copy_number_phasing)>0){
   #  #print(basename(geneDir))
@@ -1283,12 +1292,12 @@ phase <- function(df_gene,
   ## indirect phasing done
   append_loglist("finalizing phasing results")
   ## reconstruct phasing results
-  global_ZygosityPredictor_variable_main_pos <- get_main_mut_pos()
-  uppertri <- which(upper.tri(global_ZygosityPredictor_variable_mat_phased))
-  all_combs <- intersect(global_ZygosityPredictor_variable_main_pos, uppertri)
+  ZP_env$global_ZygosityPredictor_variable_main_pos <- get_main_mut_pos(ZP_env)
+  uppertri <- which(upper.tri(ZP_env$global_ZygosityPredictor_variable_mat_phased))
+  all_combs <- intersect(ZP_env$global_ZygosityPredictor_variable_main_pos, uppertri)
  #print(1)
  #print(read_level_phasing_info)
-  phasing_all_combs <- aggregate_phasing(all_combs, df_gene, read_level_phasing_info, copy_number_phasing)
+  phasing_all_combs <- aggregate_phasing(all_combs, df_gene, read_level_phasing_info, copy_number_phasing, ZP_env)
  if(nrow(read_level_phasing_info)==0){
    read_level_phasing_info_export <- tibble()
  } else {
@@ -1298,10 +1307,10 @@ phase <- function(df_gene,
              comb=paste(
                sort(
                  factor(
-                  c(colnames(global_ZygosityPredictor_variable_mat_phased)[get_xy_index(ncomb, 
-                                                      nrow(global_ZygosityPredictor_variable_mat_phased))["x"]], 
-                     rownames(global_ZygosityPredictor_variable_mat_phased)[get_xy_index(ncomb, 
-                                                       nrow(global_ZygosityPredictor_variable_mat_phased))["y"]]),
+                  c(colnames(ZP_env$global_ZygosityPredictor_variable_mat_phased)[get_xy_index(ncomb, 
+                                                      nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))["x"]], 
+                     rownames(ZP_env$global_ZygosityPredictor_variable_mat_phased)[get_xy_index(ncomb, 
+                                                       nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))["y"]]),
                   levels=c(paste0("m", seq(1,1000,1)),
                            paste0("s", seq(1,10000,1)))
                  )
@@ -1309,14 +1318,14 @@ phase <- function(df_gene,
                collapse="-"
                ))   
   }
-  store_log(geneDir, as_tibble(global_ZygosityPredictor_variable_mat_phased), "mat_phased.tsv")
-  store_log(geneDir, as_tibble(global_ZygosityPredictor_variable_mat_info), "mat_info.tsv")
+  store_log(geneDir, as_tibble(ZP_env$global_ZygosityPredictor_variable_mat_phased), "mat_phased.tsv")
+  store_log(geneDir, as_tibble(ZP_env$global_ZygosityPredictor_variable_mat_info), "mat_info.tsv")
  #print(phasing_all_combs)
   func_end()
   return(list(phasing_all_combs, 
               read_level_phasing_info_export, 
-              global_ZygosityPredictor_variable_mat_phased, 
-              global_ZygosityPredictor_variable_mat_info,
+              ZP_env$global_ZygosityPredictor_variable_mat_phased, 
+              ZP_env$global_ZygosityPredictor_variable_mat_info,
               copy_number_phasing))
 }
 #' @keywords internal
