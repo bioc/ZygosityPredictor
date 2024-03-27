@@ -896,51 +896,13 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output, ZP_env){
   func_end(ZP_env)
   return(full_output)
 }
-# remove_global_vars <- function(ZP_env){
-#   func_start(ZP_env)
-#   #rlang::env_unlock(globalenv())
-#   # suppressWarnings(
-#   #   rm(
-#   #     ## options
-#   #     ZP_env$global_ZygosityPredictor_variable_debug_call_depth, 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_log_depth, 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_timelist, 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_debug, 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_verbose, 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_printLog, 
-#   #     ## data 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_mat_info, 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_mat_phased, 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_mat_dist, 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_main_muts, 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_main_pos, 
-#   #     ## embedded 
-#   #      ZP_env$global_ZygosityPredictor_variable_debug_embedded#,
-#   #      #inherits = TRUE
-#   #      )
-#   # )
-#   func_end(ZP_env)
-# }
+
 set_global_variables <- function(debug, verbose, printLog, ZP_env){
-  #print(verbose)
-  #func_start(ZP_env)
-  
   ZP_env$global_ZygosityPredictor_variable_debug_call_depth <- 0
   ZP_env$global_ZygosityPredictor_variable_debug_log_depth <- 0
   ZP_env$global_ZygosityPredictor_variable_debug_timelist  <- list()
   ZP_env$global_ZygosityPredictor_variable_debug_verbose <- verbose
   ZP_env$global_ZygosityPredictor_variable_debug_printLog <- printLog
-  # if(verbose==TRUE){
-  #   ZP_env$global_ZygosityPredictor_variable_debug_verbose <- TRUE
-  # } else {
-  #   ZP_env$global_ZygosityPredictor_variable_debug_verbose <- FALSE
-  # }
-  # if(printLog==TRUE){
-  #   ZP_env$global_ZygosityPredictor_variable_debug_printLog <- TRUE
-  # } else {
-  #   ZP_env$global_ZygosityPredictor_variable_debug_printLog <- FALSE
-  # }
-  #func_end(ZP_env)
 }
 #' @keywords internal
 catt <- function(printLog=FALSE, level, text){
@@ -950,7 +912,6 @@ catt <- function(printLog=FALSE, level, text){
 }
 increment_loglist <- function(ZP_env){
   ZP_env$global_ZygosityPredictor_variable_debug_loglist <- list()
-  #ZP_env$global_ZygosityPredictor_variable_debug_timelog <- list()
 }
 #' @importFrom stringr str_replace_all %>%
 append_loglist <- function(..., ZP_env){
@@ -959,7 +920,6 @@ append_loglist <- function(..., ZP_env){
     paste0(filler,.) %>%
     str_replace_all("\n", paste0("\n",filler))
   ZP_env$global_ZygosityPredictor_variable_debug_loglist <- append(ZP_env$global_ZygosityPredictor_variable_debug_loglist, appendix)
-  #ZP_env$global_ZygosityPredictor_variable_debug_timelog <- append(ZP_env$global_ZygosityPredictor_variable_debug_timelog, as.character(Sys.time()))
   if(ZP_env$global_ZygosityPredictor_variable_debug_printLog==TRUE){
     message(appendix)
   }

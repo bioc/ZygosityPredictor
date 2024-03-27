@@ -80,9 +80,6 @@ eval_rare_case <- function(all_comb){
       .[which(.>=2)]
     if(length(mut_occurence)>=3){
       rare_case <- " rare_case_detected"
-      
-      
-      
     } else {
       rare_case <- ""
     }
@@ -111,12 +108,6 @@ create_phasing_matrices <- function(all_variants, all_pos, distCutOff, ZP_env){
   ZP_env$global_ZygosityPredictor_variable_mat_phased <- ZP_env$global_ZygosityPredictor_variable_mat_dist
   ZP_env$global_ZygosityPredictor_variable_mat_phased[ZP_env$global_ZygosityPredictor_variable_mat_phased!=0] <- NA  
   ZP_env$global_ZygosityPredictor_variable_mat_info <- ZP_env$global_ZygosityPredictor_variable_mat_phased
-  # global_ZygosityPredictor_variable_mat_dist <<- make_dist_matrix(all_pos, all_variants, distCutOff) 
-  # global_ZygosityPredictor_variable_main_muts <<- all_variants
-  # global_ZygosityPredictor_variable_main_pos <<- all_pos
-  # global_ZygosityPredictor_variable_mat_phased <<- global_ZygosityPredictor_variable_mat_dist
-  # global_ZygosityPredictor_variable_mat_phased[global_ZygosityPredictor_variable_mat_phased!=0] <<- NA  
-  # global_ZygosityPredictor_variable_mat_info <<- global_ZygosityPredictor_variable_mat_phased
 }
 append_phasing_matrices <- function(all_variants, all_pos, distCutOff, ZP_env){
   func_start(ZP_env)
@@ -165,7 +156,6 @@ get_next_path <- function(comb, ZP_env){
   if(length(intersect(as.numeric(mains), 
                       c(connections$mut_id1, connections$mut_id2)))==2){
     graph <- igraph::graph_from_data_frame(connections, directed = FALSE)
-    #all_paths <- igraph::all_shortest_paths(graph, from = mains[1], to = mains[2], mode = "all")$res 
     all_paths <- igraph::all_shortest_paths(graph, from = mains[1], to = mains[2], mode = "all")$res  
     if(length(all_paths)>0){
         poss <- list()
@@ -253,7 +243,6 @@ prioritize_combination <- function(ZP_env){
 #' @importFrom dplyr bind_rows left_join select filter
 aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_number_phasing=NULL, ZP_env){
   func_start(ZP_env)
-  #print(all_combs)
   phasing_all_combs <- lapply(all_combs, function(mmp){
     comb_vec <- paste0("m",sort(get_xy_index(mmp, nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))))
     comb <- comb_vec %>% paste(collapse="-")    
@@ -270,9 +259,6 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
                                          1,
                                          df_gene_relcomb$aff_cp[1],
                                          df_gene_relcomb$aff_cp[2])
-    # print(global_ZygosityPredictor_variable_mat_phased)
-    # print(mmp)
-    # print(nconst)
     ## gescheit machen irgendwann
     if(is.na(nconst)){
       nconst <- 0
@@ -499,8 +485,6 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2, ZP_env){
   ref_pos2 <- as.numeric(pos2)
   ref_chr1 <- as.character(chr1)
   ref_chr2 <- as.character(chr2)
-  #print(pos1)
-  #print(pos2)
   if(pos1>pos2){
     #stop("avoid changing position order")
     ## exchange does not matter here
@@ -509,14 +493,11 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2, ZP_env){
     ref_chr1 <- as.character(chr2)
     ref_chr2 <- as.character(chr1)
   }
-  #print(ref_chr1)
-  #print(ref_chr2)
   ref_gr1 <- GRanges(seqnames = ref_chr1, 
                      ranges = ref_pos1)
   ref_gr2 <- GRanges(seqnames = ref_chr2, 
                      ranges = ref_pos2)
   ## now load all reads/read-pairs that cover the position of the first variant
-  #vm("loading reads", 1)
   all_covering_read_pairs <-GenomicAlignments:: readGAlignmentPairs(
     bamDna,
     param=Rsamtools::ScanBamParam(
@@ -535,14 +516,6 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2, ZP_env){
       GenomicAlignments::last(all_covering_read_pairs) %>%
         GRanges()
     )
-    ## from here for bioconductor
-    # all_reads <- c(
-    #   first(all_covering_read_pairs) %>%
-    #     GRanges(),
-    #   last(all_covering_read_pairs) %>%
-    #     GRanges()
-    # )
-    ## until here for Bioconductor
     shared_read_pairs <- all_reads %>%
       subsetByOverlaps(.,ref_gr2) %>%
       elementMetadata(.) %>%
@@ -703,16 +676,12 @@ append_matrices <- function(classified_main_comb, ZP_env, iterate=TRUE){
   if(nrow(classified_main_comb)>0){
     mat_old <- ZP_env$global_ZygosityPredictor_variable_mat_phased
     lapply(seq(1,nrow(classified_main_comb)), function(C){
-      #print(C)
-      #print(classified_main_comb[C,]$phasing)
-      #print(classified_main_comb[C,]$nconst)
       ZP_env$global_ZygosityPredictor_variable_mat_phased[classified_main_comb[C,]$comb] <- 
         classified_main_comb[C,]$nconst
       ZP_env$global_ZygosityPredictor_variable_mat_info[classified_main_comb[C,]$comb] <- 
         classified_main_comb[C,]$phasing
       return()
     })
-    #print(global_ZygosityPredictor_variable_mat_phased)
     if(iterate==TRUE){
       something_changed <- sum(mat_old, na.rm = TRUE)!=sum(ZP_env$global_ZygosityPredictor_variable_mat_phased, na.rm = TRUE)
       mat_new <- ZP_env$global_ZygosityPredictor_variable_mat_phased
@@ -814,13 +783,9 @@ perform_direct_phasing <- function(df_gene, bamDna, bamRna,
                               classified_main_comb)
     i <- i+1
   }
-  #print(read_level_phasing_info)
   append_matrices(read_level_phasing_info, ZP_env)
   func_end(ZP_env)
   return(read_level_phasing_info)
-  # return(list(status=NULL,
-  #             info=read_level_phasing_info,
-  #             exit=tibble(phasing="direct", info="test")))
 }
 perform_indirect_phasing <- function(df_gene, vcf, bamDna, bamRna, haploBlocks,  
                                      distCutOff, somCna, snpQualityCutOff, 
@@ -845,13 +810,6 @@ perform_indirect_phasing <- function(df_gene, vcf, bamDna, bamRna, haploBlocks,
         mutate(
           ## i currently disabled SNP imbalance phasing as genotype likelihood needs to be implemented here as well
           gt_seg=NA,
-          # gt_cna_min=str_split(gt_cna, ":") %>% unlist() %>% min(),
-          # gt_cna_max=str_split(gt_cna, ":") %>% unlist() %>% max(),
-          # gt_seg=case_when(
-          #   all_imb==FALSE|is.na(aff_cp) ~ NA,
-          #   round(aff_cp) == gt_cna_min ~ "0|1",
-          #   round(aff_cp) == gt_cna_max ~ "1|0",
-          # ),
           gt_final=case_when(
             gt=="1|1"|gt=="0|0" ~ NA,
             !is.na(hap_id)&str_detect(gt, "\\|") ~ gt,
@@ -917,15 +875,12 @@ load_covering_reads <- function(ref_gr, rel_mut, bamDna, ZP_env){
   all_covering_reads_firstmate <- custom_readGalign(bamDna, ref_gr, TRUE, ZP_env)
   all_covering_reads_secondmate <- custom_readGalign(bamDna, ref_gr, FALSE, ZP_env)
   ## remove overlapping reads from same pair... so that its not counted two times
-  #print(1)
   all_covering_reads_rem_dup <- c(
     all_covering_reads_firstmate,
     all_covering_reads_secondmate[which(!all_covering_reads_secondmate$qname %in% all_covering_reads_firstmate$qname)]
   )
-  #print(2)
   if(length(all_covering_reads_rem_dup)>0){
     all_covering_reads_rem_dup$origin <- "DNA"
-    #print(3)
     all_reads <- lapply(all_covering_reads_rem_dup$qname, function(QNAME){
       parsed_read <- parse_cigar(all_covering_reads_rem_dup, QNAME, paired=FALSE)
       base_info1 <- extract_base_at_refpos(parsed_read, 
@@ -947,17 +902,6 @@ formula_genotype_likelihood <- function(gtl_g,
                                         gtl_eps_v,
                                         gtl_m,
                                         gtl_k){
-  # print("epsilon_l:")
-  # print(gtl_eps_l)
-  # print("epsilon_v:")
-  # print(gtl_eps_v)
-  # print("m:")
-  # print(gtl_m)
-  # print("k")
-  # print(gtl_k)
-  # print("g")
-  # print(gtl_g)
-  #lapply(allele_specific_genotype, function(gtl_g){
     gtl_prod_ref <- unlist(lapply(gtl_eps_l, function(E){
       (gtl_m-gtl_g)*E+gtl_g*(1-E)
     })) %>%
@@ -969,11 +913,7 @@ formula_genotype_likelihood <- function(gtl_g,
     ## full formula
     genotype_likelihood <- (1/(gtl_m^gtl_k))*gtl_prod_ref*gtl_prod_alt  
     ## formula without primary factor
-    #genotype_likelihood <- gtl_prod_ref*gtl_prod_alt  
     return(c(gt=gtl_g, lklhd=genotype_likelihood, prod_ref=gtl_prod_ref, prod_alt=gtl_prod_alt))
-  #}) %>%
-    #bind_rows() %>%
-    #return()
 }
 
 adjust_n_reference_reads_somatic <- function(a, c_tum, ac_tum){
@@ -998,19 +938,12 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment,
                                              purity, sex, ZP_env){
   func_start(ZP_env)
   gt_lk_per_mut <- lapply(variants_in_segment$mut_id, function(MUT){
-    ## test gpt fucntion
-    #print(MUT)
     rel_mut <- variants_in_segment[which(variants_in_segment$mut_id==MUT),]
-    ## define variables for genotype likelyhood calclulation
-    #if(rel_mut$class=="snv"){
     ref_gr <- GRanges(seqnames = rel_mut$chr, 
                       ranges = rel_mut$pos)
     ## now load all reads/read-pairs that cover the position of the first variant
-    #vm("loading reads", 1)
     all_reads <- load_covering_reads(ref_gr, rel_mut, bamDna, ZP_env)%>%
       mutate(processed_mapq=10^(as.numeric(mapq)/(-10)))
-    #print(rel_mut)
-    #print(all_reads)
     gtl_m <- rel_mut$tcn
     gtl_k <- nrow(all_reads)
     
@@ -1031,24 +964,12 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment,
                  aggregated_qual=1-(1-processed_bq)*(1-processed_mapq)) %>%
           pull(aggregated_qual)              
       } else {
-        
-        #all_reads_indel <- all_reads %>%
-         # mutate(processed_mapq=10^(as.numeric(mapq)/(-10)))
-        
-        #print(all_reads_indel)
         gtl_eps_v_raw <- all_reads %>%
           .[which(.$exp_indel==TRUE),] %>%
-          .$processed_mapq #%>%
-        #lapply(ascii_to_dec) %>%
-        #unlist() 
-        #print(2)
+          .$processed_mapq 
         gtl_eps_l_raw <- all_reads %>%
           .[which(.$exp_indel==FALSE),] %>%
-          .$processed_mapq #%>%
-        #lapply(ascii_to_dec) %>%
-        #unlist() 
-       #print(gtl_eps_v_raw)
-       #print(gtl_eps_l_raw)
+          .$processed_mapq 
       }      
       ## we defined v as k-l from genotype likelihood function
       
@@ -1181,8 +1102,6 @@ perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna
       
       variants_in_segment <- df_gene %>%
         filter(seg_id==SEG_ID)
-      #print(df_gene)
-      #print(variants_in_segment)
       if(nrow(variants_in_segment)>=2){
         if(unique(variants_in_segment$all_imb)==TRUE){
           if(!is.na(unique(variants_in_segment$gt_cna))){
@@ -1243,10 +1162,7 @@ perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna
       return(copy_number_phasing)
     }) %>%
       bind_rows()
-    #print(per_segment)
     append_matrices(per_segment, ZP_env)
-    ##print(global_ZygosityPredictor_variable_mat_phased)
-    ##print(global_ZygosityPredictor_variable_mat_info)
   ## output needs this:
   ##  status nconst p_same p_diff subclonal unplausible  dist class_comb  comb phasing
   } else {
@@ -1282,7 +1198,6 @@ phase <- function(df_gene,
   func_start(ZP_env)
   ## (1): define all combinations of variants to be phased
   create_phasing_matrices(df_gene$mut_id, df_gene$pos, distCutOff, ZP_env)
-  #print(ZP_env$global_ZygosityPredictor_variable_mat_dist)
   unphased <- unphased_main(ZP_env)
   append_loglist(length(unphased), "main combinations to phase,", 
                  abs(length(unphased)-length(ZP_env$global_ZygosityPredictor_variable_mat_phased[upper.tri(ZP_env$global_ZygosityPredictor_variable_mat_phased)])), 
@@ -1290,23 +1205,12 @@ phase <- function(df_gene,
   ## (2): perform direct phasing between variants (read-based)
   direct_phasing <- perform_direct_phasing(df_gene, bamDna, bamRna, printLog, 
                                            showReadDetail, geneDir, ZP_env)
- #print(0)
- #print(df_gene)
-  #print(global_ZygosityPredictor_variable_mat_phased)
   read_level_phasing_info <- perform_indirect_phasing(df_gene, vcf, bamDna, bamRna, 
                                            haploBlocks,  distCutOff, somCna, 
                                            snpQualityCutOff, purity, sex, 
                                            geneDir, direct_phasing, 
                                            showReadDetail, ZP_env)
-  
-  #print(global_ZygosityPredictor_variable_mat_phased)
   copy_number_phasing <- perform_copy_number_phasing(df_gene, AllelicImbalancePhasing, bamDna, purity, sex, ZP_env)
-  #print(global_ZygosityPredictor_variable_mat_phased)
-  # if(nrow(copy_number_phasing)>0){
-  #  #print(basename(geneDir))
-  #  #print(copy_number_phasing)    
-  # }
-
   ## indirect phasing done
   append_loglist("finalizing phasing results", ZP_env=ZP_env)
   ## reconstruct phasing results
@@ -1545,15 +1449,6 @@ load_snps <- function(df_gene, vcf, haploBlocks, distCutOff,  somCna,
   func_end(ZP_env)
   return(annotated_snps)
 }
-# get_genotype <- function(gt, status){
-#   if(status=="same"){
-#     return(gt)
-#   } else if(gt=="1|0"){
-#     return("0|1")
-#   } else if(gt=="0|1"){
-#     return("1|0")
-#   } 
-# }
 aggregate_probs <- function(ps){
   if(length(ps)>1){
     np <- ps[1]
