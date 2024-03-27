@@ -84,7 +84,7 @@ gene_ov <- function(fp, inp_gene, n=20){
     if(!is.null(fp$detailed_RLP_info)){
       detailed_RLP <- fp$detailed_RLP_info %>% 
         filter(gene==inp_gene) %>%
-        select(-conf, -xsq_diff, -xsq_same, -v_same, -v_diff, -phasing) %>%
+        select(-xsq_diff, -xsq_same, -v_same, -v_diff, -phasing) %>%
         mutate_at(.vars=c("mut2", "mut1", "both", "p_same",    "p_diff"),
                   .funs=round, 2) %>%
         arrange(desc(nconst))   
