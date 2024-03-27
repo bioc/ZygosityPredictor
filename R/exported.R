@@ -424,7 +424,7 @@ predict_per_variant <- function(purity,
     somSmallVars <- check_gr_small_vars(somSmallVars, "somatic", ZP_env)
     germSmallVars <- check_gr_small_vars(germSmallVars, "germline", ZP_env)
     ploidy <- check_ploidy(ploidy)
-    geneModel <- check_gr_gene_model(geneModel, ZP_env, is_pre_eval, ZP_env)
+    geneModel <- check_gr_gene_model(geneModel, ZP_env, is_pre_eval)
   } else {
     is_pre_eval <- FALSE
   }
@@ -518,9 +518,6 @@ predict_per_variant <- function(purity,
                 combined_uncovered=combined_uncovered)   
   }
   func_end(ZP_env)
-  if(is_pre_eval){
-    remove_global_vars(ZP_env)
-  }
   return(full_eval)
 }
 #' predicts zygosity of a set of genes of a sample
@@ -708,7 +705,6 @@ predict_zygosity <- function(purity,
   ## define global debugging variable
   ZP_env <- new.env()
   set_global_variables(debug, verbose, printLog, ZP_env)
-  global_ZygosityPredictor_variable_embedded <<- TRUE
   ## for parent function this must be here after gobal variable edfinition
   func_start(ZP_env)
   ploidy <- check_ploidy(ploidy)
