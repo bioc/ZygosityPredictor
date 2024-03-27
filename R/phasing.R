@@ -36,7 +36,7 @@ unknown_main <- function(ZP_env){
 #' @importFrom dplyr select filter mutate bind_rows
 #' @importFrom tibble as_tibble
 add_snps_to_matrices <- function(snps, ZP_env){
-  func_start()
+  func_start(ZP_env)
   snps_hap <- snps[which(!is.na(snps$block_final)),] %>%
     select(mut_id, block_final, gt=gt_final)
   known_combs <- lapply(unique(snps_hap$block_final) %>% .[which(.!=0)], function(HAP_ID){
@@ -69,7 +69,7 @@ add_snps_to_matrices <- function(snps, ZP_env){
     return(new)
   })  %>% bind_rows()
   append_matrices(known_combs, ZP_env, iterate=FALSE)
-  func_end()
+  func_end(ZP_env)
 }
 eval_rare_case <- function(all_comb){
   diff_combs <- all_comb[which(all_comb$nconst==2),]
@@ -91,6 +91,19 @@ eval_rare_case <- function(all_comb){
   }
   return(rare_case)
 }
+#' @keywords internal
+make_dist_matrix <- function(v, all_variants, distCutOff){
+  n <- length(v)
+  mat <- matrix(0, nrow = n, ncol = n)
+  for (i in 1:n) {
+    mat[i, ] <- abs(v - v[i])
+  }
+  rownames(mat) <- all_variants
+  colnames(mat) <- all_variants
+  mat[mat>distCutOff] <- 0
+  mat[lower.tri(mat)] <- 0
+  return(mat) 
+}
 create_phasing_matrices <- function(all_variants, all_pos, distCutOff, ZP_env){
   ZP_env$global_ZygosityPredictor_variable_mat_dist <- make_dist_matrix(all_pos, all_variants, distCutOff) 
   ZP_env$global_ZygosityPredictor_variable_main_muts <- all_variants
@@ -106,7 +119,7 @@ create_phasing_matrices <- function(all_variants, all_pos, distCutOff, ZP_env){
   # global_ZygosityPredictor_variable_mat_info <<- global_ZygosityPredictor_variable_mat_phased
 }
 append_phasing_matrices <- function(all_variants, all_pos, distCutOff, ZP_env){
-  func_start()
+  func_start(ZP_env)
   ZP_env$global_ZygosityPredictor_variable_mat_dist <- make_dist_matrix(c(ZP_env$global_ZygosityPredictor_variable_main_pos, all_pos), 
                                 c(ZP_env$global_ZygosityPredictor_variable_main_muts, all_variants), 
                                 distCutOff) 
@@ -118,7 +131,7 @@ append_phasing_matrices <- function(all_variants, all_pos, distCutOff, ZP_env){
   nm <- length(ZP_env$global_ZygosityPredictor_variable_main_muts)
   ZP_env$global_ZygosityPredictor_variable_mat_phased[c(1:nm), c(1:nm)] <- mat_phased_main
   ZP_env$global_ZygosityPredictor_variable_mat_info[c(1:nm), c(1:nm)] <- mat_info_main
-  func_end()
+  func_end(ZP_env)
 }
 #' @importFrom magrittr %>%
 #' @importFrom purrr set_names
@@ -135,7 +148,7 @@ get_main_mut_conns <- function(ZP_env){
 #' @importFrom purrr set_names
 #' @importFrom igraph graph_from_data_frame all_shortest_paths
 get_next_path <- function(comb, ZP_env){
-  func_start()
+  func_start(ZP_env)
       
   mains <- as.character(sort(get_xy_index(as.numeric(comb), nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))))
 
@@ -175,14 +188,14 @@ get_next_path <- function(comb, ZP_env){
   } else {
     np <- NULL
   }
-  func_end()
+  func_end(ZP_env)
   return(np)
 }
 #' @importFrom purrr set_names
 #' @importFrom stringr %>%
 #' @importFrom dplyr left_join
 prioritize_combination <- function(ZP_env){
-  func_start()
+  func_start(ZP_env)
   unrel_rows <- rownames(ZP_env$global_ZygosityPredictor_variable_mat_phased) %>% 
     .[which(!. %in% colnames(ZP_env$global_ZygosityPredictor_variable_mat_phased))]
   mat_tmp <- ZP_env$global_ZygosityPredictor_variable_mat_dist
@@ -231,7 +244,7 @@ prioritize_combination <- function(ZP_env){
   } else {
     next_comb <- get_xy_index(shortest[1], nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))
   }
-  func_end()
+  func_end(ZP_env)
   return(next_comb)
 }
 #' @importFrom magrittr %>%
@@ -239,7 +252,7 @@ prioritize_combination <- function(ZP_env){
 #' @importFrom purrr set_names
 #' @importFrom dplyr bind_rows left_join select filter
 aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_number_phasing=NULL, ZP_env){
-  func_start()
+  func_start(ZP_env)
   #print(all_combs)
   phasing_all_combs <- lapply(all_combs, function(mmp){
     comb_vec <- paste0("m",sort(get_xy_index(mmp, nrow(ZP_env$global_ZygosityPredictor_variable_mat_phased))))
@@ -332,7 +345,7 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
     bind_rows()  %>%
     select(comb, nconst, const, phasing, via, conf, unplausible, subclonal, 
            wt_cp, min_poss_wt_cp, max_poss_wt_cp, score)
-  func_end()
+  func_end(ZP_env)
   return(phasing_all_combs)
 }
 #' @keywords internal
@@ -341,8 +354,8 @@ aggregate_phasing <- function(all_combs, df_gene, read_level_phasing_info, copy_
 #' @importFrom dplyr group_by tally mutate ungroup rowwise pull filter summarize left_join select
 #' @importFrom stats chisq.test
 classify_combination <- function(classified_reads, ref_class1, ref_class2, 
-                                 purity, printLog){
-  func_start()
+                                 purity, printLog, ZP_env){
+  func_start(ZP_env)
   result <- . <- fac <- NULL
   all_possible_results <- c('both', 'mut1', 'mut2', 'none', 
                             "dev_var", 'read_in_read', 
@@ -362,7 +375,7 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
     t() %>%
     as_tibble()
   none_raw <- number[['none']]
-  append_loglist(print_tibble(number))
+  append_loglist(print_tibble(number), ZP_env=ZP_env)
   ## calculate confidence from basecalls and mapping quality of read
   ## and aggregate them per classification result
   cr_conf <- classified_reads %>%
@@ -393,7 +406,7 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
   mut2 <- relevant_for_decision %>%
     filter(fac=="mut2") %>%
     pull(prob_sum)
-  append_loglist(print_tibble(relevant_for_decision))
+  append_loglist(print_tibble(relevant_for_decision), ZP_env=ZP_env)
   ## predefine null result if no evidence
   const <- "null"
   p <- 1
@@ -403,11 +416,11 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
   ## get total number of relevant classifications
   sum_rel <- sum(relevant_for_decision$prob_sum)
   if(sum_rel==0){
-    append_loglist("no evidence for any classification")
+    append_loglist("no evidence for any classification", ZP_env=ZP_env)
   } else if(both==0&mut1==0&ref_class2=="snp"){
-    append_loglist("only mut2 detected, which is SNP")
+    append_loglist("only mut2 detected, which is SNP", ZP_env=ZP_env)
   } else if(both==0&mut2==0&ref_class1=="snp"){
-    append_loglist("only mut1 detected, which is SNP")
+    append_loglist("only mut1 detected, which is SNP", ZP_env=ZP_env)
   } else {
     ## check for similarity of numbers in both, mut1 and mut2 by chi-squared
     suppressWarnings(
@@ -468,7 +481,7 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
     subclonal=subclonal,
     unplausible=unplausible
   )
-  func_end()
+  func_end(ZP_env)
   return(status_table)
 }  
 #' @keywords internal
@@ -478,8 +491,8 @@ classify_combination <- function(classified_reads, ref_class1, ref_class2,
 #' @importFrom Rsamtools ScanBamParam
 #' @importFrom IRanges subsetByOverlaps
 #' @importFrom dplyr tibble
-prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2){
-  func_start()
+prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2, ZP_env){
+  func_start(ZP_env)
   qname.first <- . <- NULL
   ## importFrom dplyr tibble filter
   ref_pos1 <- as.numeric(pos1)
@@ -541,7 +554,7 @@ prepare_raw_bam_file <- function(bamDna, chr1, chr2, pos1, pos2){
     ]
     #print(6)
   }
-  func_end()
+  func_end(ZP_env)
   return(filtered_reads)
 }
 #' @keywords internal
@@ -550,13 +563,13 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
                                         ref_chr1, 
                                         ref_chr2, 
                                         ref_pos1, 
-                                        ref_pos2){
-  func_start()
+                                        ref_pos2, ZP_env){
+  func_start(ZP_env)
   dna_bam <- prepare_raw_bam_file(bamDna, 
                                   ref_chr1, 
                                   ref_chr2, 
                                   ref_pos1, 
-                                  ref_pos2) 
+                                  ref_pos2, ZP_env) 
   if(length(dna_bam)!=0){
     dna_bam$origin <- "DNA"
   }
@@ -565,7 +578,7 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
                                     ref_chr1, 
                                     ref_chr2, 
                                     ref_pos1, 
-                                    ref_pos2)
+                                    ref_pos2, ZP_env)
     if(length(rna_bam)==0){
       rna_bam <- NULL
     } else {
@@ -574,7 +587,7 @@ check_for_overlapping_reads <- function(bamDna, bamRna,
   } else {
     rna_bam <- NULL
   }
-  func_end()
+  func_end(ZP_env)
   return(c(dna_bam, rna_bam))
 }
 #' @keywords internal
@@ -589,14 +602,14 @@ classify_reads <- function(ref_pos1,
                            ref_ref1,
                            ref_ref2,
                            ref_class1,
-                           ref_class2, bamDna, bamRna){
-  vm(as.character(sys.call()[1]),  1)
+                           ref_class2, bamDna, bamRna, ZP_env){
+  vm(as.character(sys.call()[1]),  1, ZP_env=ZP_env)
   bam <- check_for_overlapping_reads(bamDna,
                                      bamRna,
                                      ref_chr1,
                                      ref_chr2,
                                      ref_pos1,
-                                     ref_pos2)
+                                     ref_pos2, ZP_env)
   if(!length(bam)==0){  
     classified_reads <- lapply(unique(bam$qname),
                                core_tool,
@@ -613,7 +626,7 @@ classify_reads <- function(ref_pos1,
   } else {
     classified_reads <- tibble()
   } 
-  func_end()
+  func_end(ZP_env)
   return(classified_reads)
 }
 #' @importFrom magrittr %>%
@@ -621,8 +634,8 @@ classify_reads <- function(ref_pos1,
 #' @importFrom dplyr mutate
 phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna,  
                               geneDir, phasing_type, showReadDetail, ZP_env){
-  func_start()
-  append_loglist("Phasing:", comb)
+  func_start(ZP_env)
+  append_loglist("Phasing:", comb, ZP_env=ZP_env)
   ## predefine empty output
   classified_main_comb <- tibble(comb=comb, const="null", nconst=0, conf=0,
                                  phasing=comb)
@@ -656,9 +669,10 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna,
                                           ref_class1,
                                           ref_class2, 
                                           bamDna, 
-                                          bamRna)
+                                          bamRna,
+                                          ZP_env=ZP_env)
   append_loglist(nrow(main_classified_reads), 
-                 "reads / read-pairs covering both positions")
+                 "reads / read-pairs covering both positions", ZP_env=ZP_env)
   if(nrow(main_classified_reads)!=0){
     if(showReadDetail==TRUE){
       store_log(geneDir, main_classified_reads %>%
@@ -668,7 +682,7 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna,
     classified_main_comb <- classify_combination(main_classified_reads,
                                                  ref_class1, ref_class2,
                                                  purity,
-                                                 printLog
+                                                 printLog, ZP_env
                                                  
     ) %>%  
       mutate(
@@ -680,12 +694,12 @@ phase_combination <- function(mat_gene_relcomb, comb, bamDna, bamRna,
         phasing=comb
       ) 
   }   
-  func_end()
+  func_end(ZP_env)
   return(classified_main_comb)
 }
 #' @importFrom magrittr %>%
 append_matrices <- function(classified_main_comb, ZP_env, iterate=TRUE){
-  func_start()
+  func_start(ZP_env)
   if(nrow(classified_main_comb)>0){
     mat_old <- ZP_env$global_ZygosityPredictor_variable_mat_phased
     lapply(seq(1,nrow(classified_main_comb)), function(C){
@@ -775,13 +789,13 @@ append_matrices <- function(classified_main_comb, ZP_env, iterate=TRUE){
       } 
     }
   }
-  func_end()
+  func_end(ZP_env)
 }
 #' @importFrom tibble tibble
 #' @importFrom dplyr  bind_rows
 perform_direct_phasing <- function(df_gene, bamDna, bamRna, 
                                     printLog, showReadDetail, geneDir, ZP_env){
-  func_start()
+  func_start(ZP_env)
   mat_gene <- as.matrix(df_gene)
   rownames(mat_gene) <- mat_gene[,"mut_id"]
   phasing_type <- "direct"
@@ -802,7 +816,7 @@ perform_direct_phasing <- function(df_gene, bamDna, bamRna,
   }
   #print(read_level_phasing_info)
   append_matrices(read_level_phasing_info, ZP_env)
-  func_end()
+  func_end(ZP_env)
   return(read_level_phasing_info)
   # return(list(status=NULL,
   #             info=read_level_phasing_info,
@@ -812,11 +826,11 @@ perform_indirect_phasing <- function(df_gene, vcf, bamDna, bamRna, haploBlocks,
                                      distCutOff, somCna, snpQualityCutOff, 
                                      purity, sex, geneDir, read_level_phasing_info, 
                                      showReadDetail, ZP_env){
-  func_start()
+  func_start(ZP_env)
   if(length(unknown_main(ZP_env))>0&!is.null(vcf)){
-    append_loglist("unphased combinations left --> Initialize SNP phasing")
+    append_loglist("unphased combinations left --> Initialize SNP phasing", ZP_env=ZP_env)
     ## missing combinations in main muts --> start secondary phasing approaches
-    lsnps <- load_snps(df_gene, vcf, haploBlocks,  distCutOff,  somCna, snpQualityCutOff)
+    lsnps <- load_snps(df_gene, vcf, haploBlocks,  distCutOff,  somCna, snpQualityCutOff, ZP_env)
     store_log(geneDir, lsnps, "lsnps.tsv")
     if(!is.null(lsnps)){
       snps <- lsnps %>%
@@ -861,7 +875,7 @@ perform_indirect_phasing <- function(df_gene, vcf, bamDna, bamRna, haploBlocks,
       to_phase <- prioritize_combination(ZP_env)
       i <- 1
       while(!is.null(to_phase)&length(unknown_main(ZP_env))>0){
-        append_loglist("Phasing combination:", paste(paste0(to_phase), collapse="-"))
+        append_loglist("Phasing combination:", paste(paste0(to_phase), collapse="-"), ZP_env=ZP_env)
         
         mat_gene_relcomb <- df[to_phase,] %>% as.matrix()
         comb <- get_single_index(to_phase[1],
@@ -880,13 +894,13 @@ perform_indirect_phasing <- function(df_gene, vcf, bamDna, bamRna, haploBlocks,
       store_log(geneDir, read_level_phasing_info, "all_indirect_phasing_combinations.tsv")
     }## no snps found
   } 
-  func_end()
+  func_end(ZP_env)
   return(read_level_phasing_info)
 }
 #' @importFrom GenomicAlignments readGAlignments granges
 #' @importFrom Rsamtools ScanBamParam scanBamFlag
-custom_readGalign <- function(bamDna, ref_gr, first){
-  func_start()
+custom_readGalign <- function(bamDna, ref_gr, first, ZP_env){
+  func_start(ZP_env)
   loaded <- GenomicAlignments::readGAlignments(
     bamDna,
     param=Rsamtools::ScanBamParam(
@@ -895,13 +909,13 @@ custom_readGalign <- function(bamDna, ref_gr, first){
       what=c("qname","seq", "cigar", "mapq", "qual")
     ))    %>%
     GenomicAlignments::granges(use.mcols = TRUE)
-  func_end()
+  func_end(ZP_env)
   return(loaded)
 }
-load_covering_reads <- function(ref_gr, rel_mut, bamDna){
-  func_start()
-  all_covering_reads_firstmate <- custom_readGalign(bamDna, ref_gr, TRUE)
-  all_covering_reads_secondmate <- custom_readGalign(bamDna, ref_gr, FALSE)
+load_covering_reads <- function(ref_gr, rel_mut, bamDna, ZP_env){
+  func_start(ZP_env)
+  all_covering_reads_firstmate <- custom_readGalign(bamDna, ref_gr, TRUE, ZP_env)
+  all_covering_reads_secondmate <- custom_readGalign(bamDna, ref_gr, FALSE, ZP_env)
   ## remove overlapping reads from same pair... so that its not counted two times
   #print(1)
   all_covering_reads_rem_dup <- c(
@@ -925,7 +939,7 @@ load_covering_reads <- function(ref_gr, rel_mut, bamDna){
     all_reads <- NULL
   }
 
-  func_end()
+  func_end(ZP_env)
   return(all_reads)
 }
 formula_genotype_likelihood <- function(gtl_g, 
@@ -979,8 +993,10 @@ adjust_n_reference_reads_germline <- function(r, p, c_tum, c_norm, VAF_norm, VAF
 
 
 
-calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specific_genotype, bamDna, purity, sex){
-  func_start()
+calc_genotype_likelihood_per_mut <- function(variants_in_segment, 
+                                             allele_specific_genotype, bamDna, 
+                                             purity, sex, ZP_env){
+  func_start(ZP_env)
   gt_lk_per_mut <- lapply(variants_in_segment$mut_id, function(MUT){
     ## test gpt fucntion
     #print(MUT)
@@ -991,7 +1007,7 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
                       ranges = rel_mut$pos)
     ## now load all reads/read-pairs that cover the position of the first variant
     #vm("loading reads", 1)
-    all_reads <- load_covering_reads(ref_gr, rel_mut, bamDna)%>%
+    all_reads <- load_covering_reads(ref_gr, rel_mut, bamDna, ZP_env)%>%
       mutate(processed_mapq=10^(as.numeric(mapq)/(-10)))
     #print(rel_mut)
     #print(all_reads)
@@ -1101,11 +1117,11 @@ calc_genotype_likelihood_per_mut <- function(variants_in_segment, allele_specifi
     }) %>%
       bind_rows() 
     
-  func_end()
+  func_end(ZP_env)
   return(gt_lk_per_mut)
 }
-make_mut_template <- function(variants_in_segment){
-  func_start()
+make_mut_template <- function(variants_in_segment, ZP_env){
+  func_start(ZP_env)
   template <- expand_grid(variants_in_segment$mut_id, variants_in_segment$mut_id) %>%
     apply(.,1,function(muts){
       sorted <- as.character(sort(c(muts))) %>%
@@ -1119,11 +1135,11 @@ make_mut_template <- function(variants_in_segment){
     compact() %>%
     unique() %>%
     lapply(.,set_names, nm=c("mut_id1", "mut_id2"))
-  func_end()
+  func_end(ZP_env)
   return(template)
 }
-aggregate_likelihoods <- function(mut_template, gt_lk_per_mut, allele_specific_genotype){
-  func_start()
+aggregate_likelihoods <- function(mut_template, gt_lk_per_mut, allele_specific_genotype, ZP_env){
+  func_start(ZP_env)
   #print(mut_template)
   aggregated_likelihoods <- mut_template %>%
     lapply(., function(comb){
@@ -1154,11 +1170,11 @@ aggregate_likelihoods <- function(mut_template, gt_lk_per_mut, allele_specific_g
     bind_rows() %>%
     mutate_at(.vars=c("p_same", "p_diff", "llr"),
               .funs = as.numeric) 
-  func_end()
+  func_end(ZP_env)
   return(aggregated_likelihoods)
 }
 perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna, purity, sex, ZP_env){
-  func_start()
+  func_start(ZP_env)
   if(AllelicImbalancePhasing){
   ## works only if both variants are in the same segment
     per_segment <- lapply(unique(df_gene$seg_id), function(SEG_ID){
@@ -1176,13 +1192,15 @@ perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna
             
             
             gt_lk_per_mut <- calc_genotype_likelihood_per_mut(variants_in_segment, 
-                                                              allele_specific_genotype, bamDna, purity, sex)
+                                                              allele_specific_genotype, 
+                                                              bamDna, purity, sex, ZP_env)
             
             if(nrow(gt_lk_per_mut)>0){
               ## can be zero if bam file does not cover variant  
-              mut_template <- make_mut_template(variants_in_segment)
+              mut_template <- make_mut_template(variants_in_segment, ZP_env)
             
-              aggregated_likelihoods <- aggregate_likelihoods(mut_template, gt_lk_per_mut, allele_specific_genotype)
+              aggregated_likelihoods <- aggregate_likelihoods(mut_template, 
+                                                              gt_lk_per_mut, allele_specific_genotype, ZP_env)
               
               copy_number_phasing <- aggregated_likelihoods %>%
                 rowwise() %>%
@@ -1234,7 +1252,7 @@ perform_copy_number_phasing <- function(df_gene, AllelicImbalancePhasing, bamDna
   } else {
     per_segment <- tibble()
   }
-  func_end()
+  func_end(ZP_env)
   return(per_segment)
 }
 #' @keywords internal
@@ -1261,14 +1279,14 @@ phase <- function(df_gene,
                   #verbose=FALSE,
                   ZP_env){
   #vm(as.character(sys.call()[1]),  1)
-  func_start()
+  func_start(ZP_env)
   ## (1): define all combinations of variants to be phased
   create_phasing_matrices(df_gene$mut_id, df_gene$pos, distCutOff, ZP_env)
   #print(ZP_env$global_ZygosityPredictor_variable_mat_dist)
   unphased <- unphased_main(ZP_env)
   append_loglist(length(unphased), "main combinations to phase,", 
                  abs(length(unphased)-length(ZP_env$global_ZygosityPredictor_variable_mat_phased[upper.tri(ZP_env$global_ZygosityPredictor_variable_mat_phased)])), 
-                 "are over distCutOff")
+                 "are over distCutOff", ZP_env=ZP_env)
   ## (2): perform direct phasing between variants (read-based)
   direct_phasing <- perform_direct_phasing(df_gene, bamDna, bamRna, printLog, 
                                            showReadDetail, geneDir, ZP_env)
@@ -1290,7 +1308,7 @@ phase <- function(df_gene,
   # }
 
   ## indirect phasing done
-  append_loglist("finalizing phasing results")
+  append_loglist("finalizing phasing results", ZP_env=ZP_env)
   ## reconstruct phasing results
   ZP_env$global_ZygosityPredictor_variable_main_pos <- get_main_mut_pos(ZP_env)
   uppertri <- which(upper.tri(ZP_env$global_ZygosityPredictor_variable_mat_phased))
@@ -1321,7 +1339,7 @@ phase <- function(df_gene,
   store_log(geneDir, as_tibble(ZP_env$global_ZygosityPredictor_variable_mat_phased), "mat_phased.tsv")
   store_log(geneDir, as_tibble(ZP_env$global_ZygosityPredictor_variable_mat_info), "mat_info.tsv")
  #print(phasing_all_combs)
-  func_end()
+  func_end(ZP_env)
   return(list(phasing_all_combs, 
               read_level_phasing_info_export, 
               ZP_env$global_ZygosityPredictor_variable_mat_phased, 
@@ -1366,10 +1384,10 @@ make_both_annotations <- function(region_to_load_in){
 #' @importFrom purrr compact
 #' @importFrom VariantAnnotation readVcf geno info
 #' @importFrom Rsamtools seqnamesTabix TabixFile
-loadVcf <- function(vcf_in, chrom, region_to_load_in,  which="all",
+loadVcf <- function(vcf_in, chrom, region_to_load_in, ZP_env,  which="all",
                     colname_gt="GT", colname_af="AF", colname_dp4="DP4", 
                     dkfz=FALSE){
-  func_start()
+  func_start(ZP_env)
   ## first check which format input vcf has
   region_to_load <- region_to_load_in
   chr_anno <- as_tibble(region_to_load_in) %>%
@@ -1456,7 +1474,7 @@ loadVcf <- function(vcf_in, chrom, region_to_load_in,  which="all",
   } else {
     filtered_vcf <- final_vcf
   }
-  func_end()
+  func_end(ZP_env)
   return(filtered_vcf)
 }
 #' @importFrom dplyr case_when
@@ -1471,14 +1489,14 @@ get_string_const <- function(nconst){
 #' @importFrom dplyr filter select mutate left_join
 #' @importFrom tibble as_tibble
 load_snps <- function(df_gene, vcf, haploBlocks, distCutOff,  somCna, 
-                      snpQualityCutOff, which="all"){
-  func_start()
+                      snpQualityCutOff, ZP_env, which="all"){
+  func_start(ZP_env)
   chrom <- unique(df_gene$chr)
   region_to_load <- paste0(chrom, ":", min(df_gene$pos)-distCutOff,
                            "-", max(df_gene$pos)+distCutOff) %>%
     GRanges()  %>%
     split_genomic_range(.,df_gene$pos)
-  loaded_vcf_hz <- loadVcf(vcf, chrom, region_to_load)
+  loaded_vcf_hz <- loadVcf(vcf, chrom, region_to_load, ZP_env)
   if(length(loaded_vcf_hz)>0){
     fsnps <- loaded_vcf_hz %>% as_tibble() %>%
       filter(!is.na(QUAL)&QUAL>snpQualityCutOff) %>%
@@ -1486,7 +1504,7 @@ load_snps <- function(df_gene, vcf, haploBlocks, distCutOff,  somCna,
     if(nrow(fsnps)>0){
       snps <- fsnps %>%
         mutate(mut_id=paste0("s", c(1:nrow(.))+nrow(df_gene)))
-      append_loglist(nrow(snps), "SNPs detected in distCutOff range")
+      append_loglist(nrow(snps), "SNPs detected in distCutOff range", ZP_env=ZP_env)
       if(!"af" %in% names(snps)){
         if("dp4" %in% names(snps)){
           snps$af <- lapply(seq(1,nrow(snps)), function(i){
@@ -1524,7 +1542,7 @@ load_snps <- function(df_gene, vcf, haploBlocks, distCutOff,  somCna,
     ## no snps detected
     annotated_snps <- NULL
   }
-  func_end()
+  func_end(ZP_env)
   return(annotated_snps)
 }
 # get_genotype <- function(gt, status){
@@ -1687,18 +1705,18 @@ extract_deletion <- function(ref_pos, parsed_read, element_mut, length_del){
 }
 #' @importFrom dplyr between
 cigar_element <- function(parsed_read, ref_pos){
-  #func_start()
+  #func_start(ZP_env)
   cigel <- parsed_read[which(between(rep(ref_pos, nrow(parsed_read)), 
                                      parsed_read$map_start, 
                                      parsed_read$map_end)),] %>%
     .[1,]
-  #func_end()
+  #func_end(ZP_env)
   return(cigel)
 }
 #' @importFrom tibble tibble
 extract_base_at_refpos <- function(parsed_read, ref_pos, class, ref_alt, 
                                    ref_ref){
-  #func_start()
+  #func_start(ZP_env)
   ## extract elemnt containing reference position from parsed read
   element_mut <- cigar_element(parsed_read, ref_pos)
   ## if position is inside N or D type, the read does not cover the position
@@ -1719,14 +1737,14 @@ extract_base_at_refpos <- function(parsed_read, ref_pos, class, ref_alt,
   } else {
     stop("class of variant needs to be provided")
   }
-  #func_end()
+  #func_end(ZP_env)
   return(base_info %>% mutate(class=class, mapq=element_mut$mapq))
 }
 #' @importFrom stringr str_sub
 #' @importFrom dplyr bind_rows mutate na_if
 #' @importFrom GenomicAlignments start end width cigarRangesAlongQuerySpace cigarRangesAlongReferenceSpace
 parse_cigar <- function(bam, qname, paired){
-  #func_start()
+  #func_start(ZP_env)
   paired_reads <- bam[which(bam$qname==qname)] 
   read_start <- GenomicAlignments::start(paired_reads)
   #read_start <- start(paired_reads)
@@ -1787,7 +1805,7 @@ parse_cigar <- function(bam, qname, paired){
   }) %>%
     bind_rows() %>%
     mutate(id=c(1:nrow(.)))
-  #func_end()
+  #func_end(ZP_env)
   return(raw_cigs)
 }
 #' @importFrom dplyr case_when

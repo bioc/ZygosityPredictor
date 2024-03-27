@@ -3,8 +3,8 @@
 #' @importFrom stringr str_match
 #' @importFrom dplyr case_when
 #' @importFrom GenomicRanges elementMetadata elementMetadata<-
-assign_correct_colnames <- function(obj, type){
-  func_start()
+assign_correct_colnames <- function(obj, type, ZP_env){
+  func_start(ZP_env)
   #vm(as.character(sys.call()[1]), 1)
   . <- NULL
   if(type=="scna"){
@@ -106,7 +106,7 @@ assign_correct_colnames <- function(obj, type){
         seq_len(length(obj))    
     }    
   }
-  func_end()
+  func_end(ZP_env)
   return(obj)
 }
 #' @keywords internal
@@ -198,8 +198,8 @@ check_chr <- function(chr){
 #' @importFrom methods is
 check_somCna <- function(somCna, geneModel, sex, ploidy,
                          assumeSomCnaGaps, colnameTcn, 
-                         colnameCnaType){
-  func_start()
+                         colnameCnaType, ZP_env){
+  func_start(ZP_env)
   . <- NULL
   ## geneModel can be null if predict_per_variant function is used alone
   if(!is.null(geneModel)){
@@ -211,7 +211,7 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
     }    
   }
 
-  somCna <- general_gr_checks(somCna, "scna", "somCna")
+  somCna <- general_gr_checks(somCna, "scna", "somCna", ZP_env)
   somCna$tcn_assumed <- FALSE
   ## check if there are segments without cna_type annotation
   if(sum(is.na(elementMetadata(somCna)[,"cna_type"]))>0){
@@ -267,13 +267,13 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
     }
   }
   new_somCna$seg_id <- seq(1, length(new_somCna))
-  func_end()
+  func_end(ZP_env)
   return(new_somCna)
 }
 #' @keywords internal
 #' description follows
-check_name_presence <- function(obj, type){
-  func_start()
+check_name_presence <- function(obj, type, ZP_env){
+  func_start(ZP_env)
   if(type=="scna"){
     if(
       any(allowed_inputs("colnames_tcn") %in% nm_md(obj))&
@@ -301,7 +301,7 @@ check_name_presence <- function(obj, type){
       res <- FALSE
     }    
   }
-  func_end()
+  func_end(ZP_env)
   return(res)
 }
 check_logDir <- function(logDir){
@@ -316,8 +316,8 @@ check_logDir <- function(logDir){
     return(NULL)
   }
 }
-general_gr_checks <- function(obj, type, lab){
-  func_start()
+general_gr_checks <- function(obj, type, lab, ZP_env){
+  func_start(ZP_env)
   if(!is(obj, "GRanges")){
     stop("input ", lab, " must be a GRanges object;",
          "given input appears to be:", 
@@ -325,7 +325,7 @@ general_gr_checks <- function(obj, type, lab){
   } else if(type=="haploBlocks"){
   ## haploblocks do not need any metadata columns  
     res <- obj
-  } else if(!check_name_presence(obj, type)){
+  } else if(!check_name_presence(obj, type, ZP_env)){
     if(type=="scna"){
       stop(
         "input somCna requires the following metadata columns: ",
@@ -340,21 +340,21 @@ general_gr_checks <- function(obj, type, lab){
         "\'gene\'/\'GENE\'")
     }
   } else {
-    res <- assign_correct_colnames(obj, type)
+    res <- assign_correct_colnames(obj, type, ZP_env)
   }
-  func_end()
+  func_end(ZP_env)
   return(res)
 }
 #' @keywords internal
 #' description follows
-check_gr_gene_model <- function(geneModel, is_pre_eval=FALSE){
-  func_start()
+check_gr_gene_model <- function(geneModel, ZP_env, is_pre_eval=FALSE){
+  func_start(ZP_env)
   . <- warn <-res <- NULL
 
   if(is.null(geneModel)){
     warn <- "input geneModel is NULL -> Doing nothing"
   } else {
-    res <- general_gr_checks(geneModel, "gene_model", "geneModel")
+    res <- general_gr_checks(geneModel, "gene_model", "geneModel", ZP_env)
   }
   if(length(res)==0){
     warn <- "input gene model contains no gene ranges -> Doing nothing"
@@ -363,13 +363,13 @@ check_gr_gene_model <- function(geneModel, is_pre_eval=FALSE){
   if(is_pre_eval==FALSE){
     warning(warn)
   }
-  func_end()
+  func_end(ZP_env)
   return(res)
 }
 #' @keywords internal
 #' description follows
-check_gr_small_vars <- function(obj, origin){
-  func_start()
+check_gr_small_vars <- function(obj, origin, ZP_env){
+  func_start(ZP_env)
   . <- NULL
   lab <- ifelse(origin=="somatic",
                 "somSmallVars",
@@ -383,9 +383,9 @@ check_gr_small_vars <- function(obj, origin){
             "Assuming there are no ", origin, " small variants")
     res <- NULL
   } else {
-    res <- general_gr_checks(obj, "small_vars", lab)
+    res <- general_gr_checks(obj, "small_vars", lab, ZP_env)
   }
-  func_end()
+  func_end(ZP_env)
   return(res)
 }
 #' @keywords internal
@@ -406,7 +406,7 @@ check_purity <- function(purity){
 #' description follows
 check_ploidy <- function(ploidy){
   #ZP_env$test <- "this is a test"
-  func_start()
+  #func_start(ZP_env)
   if(is.null(ploidy)){
     res <- NULL
   } else {
@@ -418,7 +418,7 @@ check_ploidy <- function(ploidy){
       res <- as.numeric(ploidy)
     }
   }
-  func_end()
+  #func_end(ZP_env)
   return(res)
 }
 #' @keywords internal
@@ -483,11 +483,12 @@ check_rna <- function(bamRna){
     return(NULL)
   }
 }
-check_haploblocks <- function(haploBlocks){
+check_haploblocks <- function(haploBlocks, ZP_env){
   if(is.null(haploBlocks)){
     return(NULL)
   } else {
-    haploBlocks <- general_gr_checks(haploBlocks, "haploBlocks", "haploBlocks")
+    haploBlocks <- general_gr_checks(haploBlocks, "haploBlocks", "haploBlocks", 
+                                     ZP_env)
     haploBlocks$hap_id <- seq(1, length(haploBlocks))
     return(haploBlocks)    
   }
