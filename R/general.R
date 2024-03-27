@@ -1,21 +1,21 @@
-func_end <- function(){
-  vm("end", -1)
+func_end <- function(ZP_env){
+  vm("end", -1, ZP_env)
 }
-func_start <- function(){
+func_start <- function(ZP_env){
   mes <- paste0(as.character(sys.call(-1)[1]))
-  vm(mes, 1)
+  vm(mes, 1, ZP_env)
 }
-increment_log_depth <- function() {
-  global_ZygosityPredictor_variable_log_depth <<- global_ZygosityPredictor_variable_log_depth + 1
+increment_log_depth <- function(ZP_env) {
+  ZP_env$global_ZygosityPredictor_variable_debug_log_depth <- ZP_env$global_ZygosityPredictor_variable_debug_log_depth + 1
 }
-decrement_log_depth <- function() {
-  global_ZygosityPredictor_variable_log_depth <<- global_ZygosityPredictor_variable_log_depth - 1
+decrement_log_depth <- function(ZP_env) {
+  ZP_env$global_ZygosityPredictor_variable_debug_log_depth <- ZP_env$global_ZygosityPredictor_variable_debug_log_depth - 1
 }
-increment_call_depth <- function() {
-  global_ZygosityPredictor_variable_call_depth <<- global_ZygosityPredictor_variable_call_depth + 1
+increment_call_depth <- function(ZP_env) {
+  ZP_env$global_ZygosityPredictor_variable_debug_call_depth <- ZP_env$global_ZygosityPredictor_variable_debug_call_depth + 1
 }
-decrement_call_depth <- function() {
-  global_ZygosityPredictor_variable_call_depth <<- global_ZygosityPredictor_variable_call_depth - 1
+decrement_call_depth <- function(ZP_env) {
+  ZP_env$global_ZygosityPredictor_variable_debug_call_depth <- ZP_env$global_ZygosityPredictor_variable_debug_call_depth - 1
 }
 #' @importFrom readr write_tsv
 store_log <- function(geneDir, obj, file){
@@ -32,8 +32,8 @@ store_log <- function(geneDir, obj, file){
 #' @importFrom GenomicRanges GRanges elementMetadata
 #' @importFrom purrr compact
 #' @importFrom dplyr summarize pull
-insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
-  vm(as.character(sys.call()[1]), 1)
+insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy, ZP_env){
+  vm(as.character(sys.call()[1]), 1, ZP_env)
   seqnames <- start <- end <- tcn <- . <- NULL
   if(sex=="male"){
     allowed_chr <- allowed_inputs("chrom_names")
@@ -97,7 +97,7 @@ insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
     }
   })
   comb_somCna <- Reduce(function(x,y)c(x,y),new_somCna)
-  func_end()
+  func_end(ZP_env)
   return(comb_somCna)
 }
 
@@ -105,8 +105,8 @@ insert_missing_cnv_regions <- function(somCna, geneModel, sex, ploidy){
 #' @importFrom IRanges mergeByOverlaps
 #' @importFrom dplyr mutate select mutate_at rowwise
 #' @importFrom stringr str_detect
-merge_sCNAs <- function(obj, somCna){
-  func_start()
+merge_sCNAs <- function(obj, somCna, ZP_env){
+  func_start(ZP_env)
   alt <- af <- tcn <- tcn_assumed <- cna_type <- gene <- ref <- NULL
   merged <- obj %>%
     mergeByOverlaps(somCna) %>% as_tibble() %>%
@@ -115,7 +115,7 @@ merge_sCNAs <- function(obj, somCna){
            seg_id, tcn_assumed) %>%
     mutate_at(.vars = c("af", "tcn"), .funs=as.numeric) %>%
     rowwise() #%>%
-  func_end()
+  func_end(ZP_env)
   return(merged)
 }
 #' @keywords internal
@@ -125,8 +125,8 @@ merge_sCNAs <- function(obj, somCna){
 #' @importFrom IRanges mergeByOverlaps
 #' @importFrom dplyr mutate filter
 prepare_somatic_variant_table <- function(somSmallVars, templateGenes, 
-                                          somCna, purity, sex){
-  func_start()
+                                          somCna, purity, sex, ZP_env){
+  func_start(ZP_env)
   cna_type <- gene <- ref <- alt <- af <- tcn <- cna_type <- chr <- 
     aff_cp <- wt_cp <- . <- tcn_assumed <- NULL
   if(!is.null(somSmallVars)){
@@ -134,7 +134,7 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
       somSmallVars[which(somSmallVars$gene %in% templateGenes)]
     if(length(reduced_to_templateGenes)>0){
       tbl_prepared_variants <- reduced_to_templateGenes %>%
-        merge_sCNAs(., somCna) %>%
+        merge_sCNAs(., somCna, ZP_env) %>%
         
         ################################
         mutate(
@@ -174,7 +174,7 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
   } else {
     tbl_prepared_variants <- NULL
   }
-  func_end()
+  func_end(ZP_env)
   return(tbl_prepared_variants)
 }
 #' @keywords internal
@@ -185,8 +185,9 @@ prepare_somatic_variant_table <- function(somSmallVars, templateGenes,
 #' @importFrom purrr compact
 #' @importFrom dplyr filter as_tibble select bind_rows mutate
 extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE, 
-                                       byTcn, sex, ploidy, include_dels){
-  func_start()
+                                       byTcn, sex, ploidy, include_dels, ZP_env){
+  #print("jou")
+  func_start(ZP_env)
   tcn <- cna_type <- seqnames <- gene <- . <- NULL
   if(include_dels==TRUE){
     TBL_CNV <- somCna %>%
@@ -267,22 +268,22 @@ extract_all_dels_of_sample <- function(somCna, geneModel, DEL_TYPE,
     #return(NULL)
     full_CNAs <- NULL
   }
-  func_end()
+  func_end(ZP_env)
   return(full_CNAs)
 }
 #' @keywords internal
 #' description follows
 #' @importFrom stringr %>%
 #' @importFrom dplyr mutate select
-prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
+prepare_germline_variants <- function(germSmallVars, somCna, purity, sex, ZP_env){
   cna_type <- gene <- ref <- alt <- af <- tcn <- cna_type <- chr <- aff_cp <- 
     origin <- pos <- wt_cp <- pre_info <- . <- tcn_assumed <- NULL
-  func_start()
+  func_start(ZP_env)
   if(is.null(germSmallVars)){
     df_germ <- NULL
   } else {
     df_germ <- germSmallVars %>% 
-      merge_sCNAs(., somCna) %>%
+      merge_sCNAs(., somCna, ZP_env) %>%
       mutate(
         origin="germline",
         class=define_class(ref, alt),
@@ -324,7 +325,7 @@ prepare_germline_variants <- function(germSmallVars, somCna, purity, sex){
              vn_status
       ) 
   }
-  func_end()
+  func_end(ZP_env)
   return(df_germ)
 }
 
@@ -379,19 +380,6 @@ split_genomic_range <- function(gr, exclude_positions) {
   split_gr <- do.call(c, subranges)
   return(split_gr)
 }
-#' @keywords internal
-make_dist_matrix <- function(v, all_variants, distCutOff){
-  n <- length(v)
-  mat <- matrix(0, nrow = n, ncol = n)
-  for (i in 1:n) {
-    mat[i, ] <- abs(v - v[i])
-  }
-  rownames(mat) <- all_variants
-  colnames(mat) <- all_variants
-  mat[mat>distCutOff] <- 0
-  mat[lower.tri(mat)] <- 0
-  return(mat) 
-}
 #' @importFrom stringr str_detect %>%
 #' @importFrom dplyr filter pull
 find_unplaus_issues <- function(unplaus){
@@ -411,8 +399,8 @@ find_unplaus_issues <- function(unplaus){
 }
 #' @importFrom dplyr arrange case_when desc mutate pull select
 #' @importFrom stringr %>% str_detect 
-eval_phasing_new <- function(all_comb, df_gene, printLog){
-  func_start()
+eval_phasing_new <- function(all_comb, df_gene, printLog, ZP_env){
+  func_start(ZP_env)
   rare_case <- ""
   most_relevant_comb <- all_comb %>%
     arrange(desc(score), wt_cp, desc(conf)) %>%
@@ -453,7 +441,7 @@ eval_phasing_new <- function(all_comb, df_gene, printLog){
         }
       }
     } else {
-      rare_case <- eval_rare_case(all_comb)
+      rare_case <- eval_rare_case(all_comb, ZP_env)
       ## evaluate all combinatioons
       if(0 %in% all_comb$score){
         ## potentially reachable all copies affectd by unphased combinations
@@ -546,15 +534,15 @@ eval_phasing_new <- function(all_comb, df_gene, printLog){
            warning=issues,
            eval_by=eval
            )
-  func_end()
+  func_end(ZP_env)
   return(annotated_result)
 }
 #' @keywords internal
 #' desicion tree if one variant already affects all copies in pre evaluation
 #' @importFrom dplyr mutate select filter
 #' @importFrom stringr str_detect
-eval_one_mut_affects_all <- function(df_gene, printLog){
-  func_start()
+eval_one_mut_affects_all <- function(df_gene, printLog, ZP_env){
+  func_start(ZP_env)
   concern_info <- df_gene %>% 
     filter(vn_status==2) %>%
     .[1,] %>%
@@ -564,15 +552,15 @@ eval_one_mut_affects_all <- function(df_gene, printLog){
            eval_by=ifelse(str_detect(class, "homdel"), "homdel","aff_cp")) %>%
     select(gene, n_mut, score=vn_status, conf, info, eval_by, wt_cp) %>%
     mutate(warning=NA, wt_cp_range=NA, phasing=NA)
-  append_loglist(concern_info$info)
-  func_end()
+  append_loglist(concern_info$info, ZP_env=ZP_env)
+  func_end(ZP_env)
   return(concern_info)
 }
 #' @keywords internal
 #' if no variant affecta all copies
 #' @importFrom dplyr mutate select
-eval_one_mut <- function(df_gene, printLog){
-  func_start()
+eval_one_mut <- function(df_gene, printLog, ZP_env){
+  func_start(ZP_env)
   concern_info <- df_gene %>%
     mutate(n_mut=1,
            conf=1,
@@ -582,12 +570,12 @@ eval_one_mut <- function(df_gene, printLog){
            wt_cp,
            eval_by) %>%
     mutate(warning=NA, wt_cp_range=NA, phasing=NA)
-  append_loglist(concern_info$info)
-  func_end()
+  append_loglist(concern_info$info, ZP_env=ZP_env)
+  func_end(ZP_env)
   return(concern_info)
 }
-eval_lost_in_tumor <- function(df_gene, printLog){
-  func_start()
+eval_lost_in_tumor <- function(df_gene, printLog, ZP_env){
+  func_start(ZP_env)
   concern_info <- df_gene %>%
     mutate(n_mut=1,
            conf=1,
@@ -598,13 +586,13 @@ eval_lost_in_tumor <- function(df_gene, printLog){
            wt_cp,
            eval_by) %>%
     mutate(warning="variant lost in tumor", wt_cp_range=NA, phasing=NA)
-  append_loglist(concern_info$info)
-  func_end()
+  append_loglist(concern_info$info, ZP_env=ZP_env)
+  func_end(ZP_env)
   return(concern_info)
 }
 #' @importFrom dplyr mutate select filter left_join bind_rows
-remove_duplicated_variants <- function(df_gene_raw){
-  vm(as.character(sys.call()[1]), 1)
+remove_duplicated_variants <- function(df_gene_raw, ZP_env){
+  vm(as.character(sys.call()[1]), 1, ZP_env)
   n_vars_per_pos <- df_gene_raw %>%
     group_by(chr, pos) %>%
     tally() %>%
@@ -640,7 +628,7 @@ remove_duplicated_variants <- function(df_gene_raw){
   } else {
     df_gene <- df_gene_raw
   }
-  func_end()
+  func_end(ZP_env)
   return(df_gene)
 }
 #' @keywords internal
@@ -664,11 +652,11 @@ predict_zygosity_genewise <- function(GENE,
                                       phasingMode,
                                       AllelicImbalancePhasing, 
                                       ZP_env){
-  #func_start()
-  vm("predict_zygosity_genewise", 1) ## do not replcae!!!
+  #func_start(ZP_env)
+  vm("predict_zygosity_genewise", 1, ZP_env) ## do not replcae!!!
   start_gene_eval <- Sys.time()
-  increment_loglist()
-  append_loglist(GENE)
+  increment_loglist(ZP_env)
+  append_loglist(GENE, ZP_env=ZP_env)
   gene <- pre_info <-  chr <-  pos <- wt_cp <-  mut_id <- status <- . <- 
     score <- comb <- dist <- tcn <- info <- n <- all_comb <- 
     read_level_phasing_info <- copy_number_phasing_info <- mat_phased_gene <- 
@@ -678,7 +666,7 @@ predict_zygosity_genewise <- function(GENE,
   ## all germline variants which are lost in the tumor are excluded, 
   ## vn_status = -1
   ## check if variants at the same position are present
-  df_gene_raw <- remove_duplicated_variants(pre_df_gene)
+  df_gene_raw <- remove_duplicated_variants(pre_df_gene, ZP_env=ZP_env)
   df_gene <- df_gene_raw %>%
     filter(vn_status>=0)
  #print(10)
@@ -686,21 +674,21 @@ predict_zygosity_genewise <- function(GENE,
  #print(df_gene)
   ## check if variants remain in that gene
   if(nrow(df_gene)==0){
-    eval_for_gene <- eval_lost_in_tumor(df_gene_raw, printLog)
+    eval_for_gene <- eval_lost_in_tumor(df_gene_raw, printLog, ZP_env=ZP_env)
    #print(eval_for_gene)
       ## all variants lost in tumor
-      append_loglist("all variants lost in tumor")
+      append_loglist("all variants lost in tumor", ZP_env=ZP_env)
   } else if(any(df_gene$vn_status==2)){
-      append_loglist("one of", nrow(df_gene), "variants affects all copies")
-      eval_for_gene <- eval_one_mut_affects_all(df_gene, printLog)
+      append_loglist("one of", nrow(df_gene), "variants affects all copies", ZP_env=ZP_env)
+      eval_for_gene <- eval_one_mut_affects_all(df_gene, printLog, ZP_env)
     ## (2): if only one variant is present  
   } else if(nrow(df_gene)==1){
-      append_loglist("one variant that does not affect all copies")
-      eval_for_gene <- eval_one_mut(df_gene, printLog)
+      append_loglist("one variant that does not affect all copies", ZP_env=ZP_env)
+      eval_for_gene <- eval_one_mut(df_gene, printLog, ZP_env)
     ## (3): more than one variant present in gene   
   } else {  
       append_loglist(nrow(df_gene),
-            "heterozygous variants detected: Initializing haplotype phasing")
+            "heterozygous variants detected: Initializing haplotype phasing", ZP_env=ZP_env)
       if(!is.null(logDir)){
         geneDir <- file.path(logDir, GENE)
         dir.create(geneDir)
@@ -718,7 +706,7 @@ predict_zygosity_genewise <- function(GENE,
       all_comb <- full_phasing_result[[1]] %>%
         mutate(gene=GENE)
       eval_for_gene <- eval_phasing_new(all_comb, df_gene,  
-                                    printLog)
+                                    printLog, ZP_env)
       #print(full_phasing_result)
       read_level_phasing_info <- full_phasing_result[[2]] %>%
         mutate(gene=GENE)
@@ -752,8 +740,8 @@ predict_zygosity_genewise <- function(GENE,
                                mat_info_gene,
                                copy_number_phasing_info)
                           )
-  log_message <- unlist(global_ZygosityPredictor_variable_loglist) %>% paste(collapse = "\n")
-  func_end()
+  log_message <- unlist(ZP_env$global_ZygosityPredictor_variable_debug_loglist) %>% paste(collapse = "\n")
+  func_end(ZP_env)
   return(append(zygosity_gene, log_message))
 }
 #' @keywords internal
@@ -794,8 +782,8 @@ define_class <- function(ref, alt){
 #' @importFrom dplyr as_tibble filter select mutate mutate_all
 combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
                                              som_covered, germ_covered,
-                                             templateGenes){
-  func_start()
+                                             templateGenes, ZP_env){
+  func_start(ZP_env)
   mid <- seqnames <- start <- ref <- alt <- gene <- uncovered_som <- 
     uncovered_germ <- NULL
   if(!is.null(somSmallVars)){
@@ -818,7 +806,7 @@ combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
     combined_uncovered <- bind_rows(uncovered_som, uncovered_germ) %>%
       filter(gene %in% templateGenes)
   }
-  func_end()
+  func_end(ZP_env)
   return(combined_uncovered)
 }
 #' @keywords internal
@@ -826,8 +814,8 @@ combine_uncovered_input_variants <- function(somSmallVars, germSmallVars,
 #' @importFrom dplyr as_tibble group_by mutate ungroup filter
 #' @importFrom purrr compact
 combine_main_variant_tables <- function(df_germ, df_som, df_homdels,
-                                        templateGenes, purity){
-  func_start()
+                                        templateGenes, purity, ZP_env){
+  func_start(ZP_env)
   gene <- . <- NULL
   df_all_mutations_unfiltered <- list(df_germ, df_som, df_homdels) %>% 
     compact() %>%
@@ -848,13 +836,13 @@ combine_main_variant_tables <- function(df_germ, df_som, df_homdels,
       "variant inputs"
     )
   }
-  func_end()
+  func_end(ZP_env)
   return(df_all_mutations)
 }
 #' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom dplyr bind_rows group_by mutate relocate select ungroup relocate
-bind_incdel_to_pre_eval <- function(df_incompletedels, df_all_mutations){
+bind_incdel_to_pre_eval <- function(df_incompletedels, df_all_mutations, ZP_env){
   purity <- gene <- mut_id <- NULL
   if(is.null(df_all_mutations)&is.null(df_incompletedels)){
     full_df_all_mutations <- NULL
@@ -881,8 +869,8 @@ bind_incdel_to_pre_eval <- function(df_incompletedels, df_all_mutations){
 #' @keywords internal
 #' @importFrom stringr %>%
 #' @importFrom dplyr filter bind_rows mutate select
-bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
-  func_start()
+bind_incdel_to_final_eval <- function(df_incompletedels, final_output, ZP_env){
+  func_start(ZP_env)
   gene <- 0
   if(is.null(final_output)&is.null(df_incompletedels)){
     full_output <- NULL
@@ -905,53 +893,54 @@ bind_incdel_to_final_eval <- function(df_incompletedels, final_output){
                            levels=c("all_copies_affected", "wt_copies_left", 
                                     "undefined")))
   }
-  func_end()
+  func_end(ZP_env)
   return(full_output)
 }
-remove_global_vars <- function(){
-  func_start()
-  #rlang::env_unlock(globalenv())
-  suppressWarnings(
-    rm(
-      ## options
-      global_ZygosityPredictor_variable_call_depth, 
-       global_ZygosityPredictor_variable_log_depth, 
-       global_ZygosityPredictor_variable_timelist, 
-       global_ZygosityPredictor_variable_debug, 
-       global_ZygosityPredictor_variable_verbose, 
-       global_ZygosityPredictor_variable_printLog, 
-      ## data 
-       global_ZygosityPredictor_variable_mat_info, 
-       global_ZygosityPredictor_variable_mat_phased, 
-       global_ZygosityPredictor_variable_mat_dist, 
-       global_ZygosityPredictor_variable_main_muts, 
-       global_ZygosityPredictor_variable_main_pos, 
-      ## embedded 
-       global_ZygosityPredictor_variable_embedded#,
-       #inherits = TRUE
-       )
-  )
-  func_end()
-}
-set_global_variables <- function(debug, verbose, printLog){
-  global_ZygosityPredictor_variable_call_depth <<- 0
-  global_ZygosityPredictor_variable_log_depth <<- 0
-  global_ZygosityPredictor_variable_timelist  <<- list()
-  if(debug==TRUE){
-    global_ZygosityPredictor_variable_debug <<- TRUE
-  } else {
-    global_ZygosityPredictor_variable_debug <<- FALSE
-  }
-  if(verbose==TRUE){
-    global_ZygosityPredictor_variable_verbose <<- TRUE
-  } else {
-    global_ZygosityPredictor_variable_verbose <<- FALSE
-  }
-  if(printLog==TRUE){
-    global_ZygosityPredictor_variable_printLog <<- TRUE
-  } else {
-    global_ZygosityPredictor_variable_printLog <<- FALSE
-  }
+# remove_global_vars <- function(ZP_env){
+#   func_start(ZP_env)
+#   #rlang::env_unlock(globalenv())
+#   # suppressWarnings(
+#   #   rm(
+#   #     ## options
+#   #     ZP_env$global_ZygosityPredictor_variable_debug_call_depth, 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_log_depth, 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_timelist, 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_debug, 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_verbose, 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_printLog, 
+#   #     ## data 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_mat_info, 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_mat_phased, 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_mat_dist, 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_main_muts, 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_main_pos, 
+#   #     ## embedded 
+#   #      ZP_env$global_ZygosityPredictor_variable_debug_embedded#,
+#   #      #inherits = TRUE
+#   #      )
+#   # )
+#   func_end(ZP_env)
+# }
+set_global_variables <- function(debug, verbose, printLog, ZP_env){
+  #print(verbose)
+  #func_start(ZP_env)
+  
+  ZP_env$global_ZygosityPredictor_variable_debug_call_depth <- 0
+  ZP_env$global_ZygosityPredictor_variable_debug_log_depth <- 0
+  ZP_env$global_ZygosityPredictor_variable_debug_timelist  <- list()
+  ZP_env$global_ZygosityPredictor_variable_debug_verbose <- verbose
+  ZP_env$global_ZygosityPredictor_variable_debug_printLog <- printLog
+  # if(verbose==TRUE){
+  #   ZP_env$global_ZygosityPredictor_variable_debug_verbose <- TRUE
+  # } else {
+  #   ZP_env$global_ZygosityPredictor_variable_debug_verbose <- FALSE
+  # }
+  # if(printLog==TRUE){
+  #   ZP_env$global_ZygosityPredictor_variable_debug_printLog <- TRUE
+  # } else {
+  #   ZP_env$global_ZygosityPredictor_variable_debug_printLog <- FALSE
+  # }
+  #func_end(ZP_env)
 }
 #' @keywords internal
 catt <- function(printLog=FALSE, level, text){
@@ -959,51 +948,53 @@ catt <- function(printLog=FALSE, level, text){
     message(rep("  ", level), text)
   }
 }
-increment_loglist <- function(){
-  global_ZygosityPredictor_variable_loglist <<- list()
-  #global_ZygosityPredictor_variable_timelog <<- list()
+increment_loglist <- function(ZP_env){
+  ZP_env$global_ZygosityPredictor_variable_debug_loglist <- list()
+  #ZP_env$global_ZygosityPredictor_variable_debug_timelog <- list()
 }
 #' @importFrom stringr str_replace_all %>%
-append_loglist <- function(...){
-  filler <- paste(rep("  ", global_ZygosityPredictor_variable_call_depth), collapse = "")
+append_loglist <- function(..., ZP_env){
+  filler <- paste(rep("  ", ZP_env$global_ZygosityPredictor_variable_debug_call_depth), collapse = "")
   appendix <- paste(..., collapse = " ") %>%
     paste0(filler,.) %>%
     str_replace_all("\n", paste0("\n",filler))
-  global_ZygosityPredictor_variable_loglist <<- append(global_ZygosityPredictor_variable_loglist, appendix)
-  #global_ZygosityPredictor_variable_timelog <<- append(global_ZygosityPredictor_variable_timelog, as.character(Sys.time()))
-  if(global_ZygosityPredictor_variable_printLog==TRUE){
+  ZP_env$global_ZygosityPredictor_variable_debug_loglist <- append(ZP_env$global_ZygosityPredictor_variable_debug_loglist, appendix)
+  #ZP_env$global_ZygosityPredictor_variable_debug_timelog <- append(ZP_env$global_ZygosityPredictor_variable_debug_timelog, as.character(Sys.time()))
+  if(ZP_env$global_ZygosityPredictor_variable_debug_printLog==TRUE){
     message(appendix)
   }
 }
-add_timestamp <- function(){
-  global_ZygosityPredictor_variable_timelist[[global_ZygosityPredictor_variable_call_depth]] <<- Sys.time()
+add_timestamp <- function(ZP_env){
+  ZP_env$global_ZygosityPredictor_variable_debug_timelist[[ZP_env$global_ZygosityPredictor_variable_debug_call_depth]] <- Sys.time()
 }
-remove_timestamp <- function(){
-  global_ZygosityPredictor_variable_timelist <<- global_ZygosityPredictor_variable_timelist[c(1:global_ZygosityPredictor_variable_call_depth)]
+remove_timestamp <- function(ZP_env){
+  ZP_env$global_ZygosityPredictor_variable_debug_timelist <- 
+    ZP_env$global_ZygosityPredictor_variable_debug_timelist[c(1:ZP_env$global_ZygosityPredictor_variable_debug_call_depth)]
 }
 #' @importFrom magrittr %>%
-vm <- function(mes, depth=0){
+vm <- function(mes, depth=0, ZP_env){
   if(depth>0){
     to_add <- "|-"
   }  
   if(depth<0){
     to_add <- "+-"
   }
-  if(global_ZygosityPredictor_variable_verbose==TRUE){
-    to_print <- paste0(paste(rep("| ", global_ZygosityPredictor_variable_call_depth),collapse=""), to_add,mes)
+  if(ZP_env$global_ZygosityPredictor_variable_debug_verbose==TRUE){
+    to_print <- paste0(paste(rep("| ", ZP_env$global_ZygosityPredictor_variable_debug_call_depth),collapse=""), to_add,mes)
   } 
   if(depth>0){
-    increment_call_depth()
-    add_timestamp()
+    increment_call_depth(ZP_env)
+    add_timestamp(ZP_env)
     timestamp <- ""
   }  
   if(depth<0){
-    timestamp <- pt(global_ZygosityPredictor_variable_timelist[[global_ZygosityPredictor_variable_call_depth]], Sys.time()) %>%
+    timestamp <- pt(ZP_env$global_ZygosityPredictor_variable_debug_timelist[[ZP_env$global_ZygosityPredictor_variable_debug_call_depth]], 
+                    Sys.time()) %>%
       paste("  ~",.)
-    decrement_call_depth()
-    remove_timestamp()
+    decrement_call_depth(ZP_env)
+    remove_timestamp(ZP_env)
   }
-  if(global_ZygosityPredictor_variable_verbose==TRUE){
+  if(ZP_env$global_ZygosityPredictor_variable_debug_verbose==TRUE){
     message(to_print, timestamp)
   }
 }

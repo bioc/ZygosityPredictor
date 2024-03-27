@@ -404,6 +404,7 @@ predict_per_variant <- function(purity,
                                 includeIncompleteDel=TRUE,
                                 assumeSomCnaGaps=FALSE,
                                 byTcn=TRUE,
+                                ZP_env=NULL,
                                 verbose=FALSE
 ){
   status <- info <- wt_cp <- . <- df_homdels <- df_all_mutations <- gene <-
@@ -411,26 +412,25 @@ predict_per_variant <- function(purity,
     uncovered_som <- uncovered_germ <- gr_germ_cov <- gr_som_cov <- 
     som_covered <- germ_covered <- final_phasing_info <- 
     combined_snp_phasing <- NULL
-  
-  if(!exists("global_ZygosityPredictor_variable_embedded")){
+  if(is.null(ZP_env)){
+    ZP_env <- new.env()
     is_pre_eval <- TRUE
-    set_global_variables(FALSE, verbose, FALSE)
+    set_global_variables(FALSE, verbose, FALSE, ZP_env)
     somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                            assumeSomCnaGaps, colnameTcn, 
-                           colnameCnaType)  
+                           colnameCnaType, ZP_env)  
     purity <- check_purity(purity)
     sex <- check_sex(sex)
-    somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
-    germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
+    somSmallVars <- check_gr_small_vars(somSmallVars, "somatic", ZP_env)
+    germSmallVars <- check_gr_small_vars(germSmallVars, "germline", ZP_env)
     ploidy <- check_ploidy(ploidy)
-    geneModel <- check_gr_gene_model(geneModel, is_pre_eval)
-    
-
+    geneModel <- check_gr_gene_model(geneModel, ZP_env, is_pre_eval, ZP_env)
   } else {
     is_pre_eval <- FALSE
   }
   ## for parent function this must be here after gobal variable edfinition
-  func_start()
+  #print("xes i am here")
+  func_start(ZP_env)
   ## check input for valid format    
   includeIncompleteDel <- check_opt_incdel(includeIncompleteDel, ploidy)
   includeHomoDel <- check_opt_incdel(includeHomoDel, ploidy)
@@ -473,21 +473,25 @@ predict_per_variant <- function(purity,
                                                          germSmallVars,
                                                          som_covered,
                                                          germ_covered,
-                                                         templateGenes)
+                                                         templateGenes, 
+                                                         ZP_env)
   ## preapre input data for prediction (pre-evaluation)
   df_germ <- prepare_germline_variants(
     gr_germ_cov, 
-    somCna, purity, sex)
+    somCna, purity, sex,
+    ZP_env)
   df_som <- prepare_somatic_variant_table(
     gr_som_cov, 
     templateGenes, 
-    somCna, purity, sex)
+    somCna, purity, sex,
+    ZP_env)
   df_homdels <- extract_all_dels_of_sample(somCna, geneModel, 
                                            "homdel", byTcn, sex, ploidy,
-                                           includeHomoDel)
+                                           includeHomoDel, ZP_env)
   df_incompletedels <- extract_all_dels_of_sample(somCna, geneModel, 
                                                   "incompletedel", TRUE, sex, 
-                                                  ploidy, includeIncompleteDel)
+                                                  ploidy, includeIncompleteDel,
+                                                  ZP_env)
   
   #print(df_germ)
   #print(df_som)
@@ -498,22 +502,24 @@ predict_per_variant <- function(purity,
     #print(1)
     df_all_mutations <- combine_main_variant_tables(df_germ, df_som, 
                                                     df_homdels,
-                                                    templateGenes, purity)
+                                                    templateGenes, purity,
+                                                    ZP_env)
     #print(2)
   }
   if(is_pre_eval){
     
     full_eval <- list(evaluation_per_variant= 
-                  bind_incdel_to_pre_eval(df_incompletedels, df_all_mutations),
+                  bind_incdel_to_pre_eval(df_incompletedels, df_all_mutations,
+                                          ZP_env),
                 combined_uncovered=combined_uncovered)
   } else {
     full_eval <- list(evaluation_per_variant=df_all_mutations,
                 df_incompletedels=df_incompletedels,
                 combined_uncovered=combined_uncovered)   
   }
-  func_end()
+  func_end(ZP_env)
   if(is_pre_eval){
-    remove_global_vars()
+    remove_global_vars(ZP_env)
   }
   return(full_eval)
 }
@@ -700,23 +706,23 @@ predict_zygosity <- function(purity,
     combined_snp_phasing <- evaluation_per_gene <- log_list_per_gene <- 
     detailed_phasing_info <- comb_mat_phased <- comb_mat_info <- NULL
   ## define global debugging variable
-  set_global_variables(debug, verbose, printLog)
   ZP_env <- new.env()
+  set_global_variables(debug, verbose, printLog, ZP_env)
   global_ZygosityPredictor_variable_embedded <<- TRUE
   ## for parent function this must be here after gobal variable edfinition
-  func_start()
+  func_start(ZP_env)
   ploidy <- check_ploidy(ploidy)
   #print(ZP_env$test)
   sex <- check_sex(sex)
   #print(ZP_env$test)
   assumeSomCnaGaps <- check_opt_assgap(assumeSomCnaGaps, ploidy)
-  geneModel <- check_gr_gene_model(geneModel)
+  geneModel <- check_gr_gene_model(geneModel, ZP_env)
   somCna <- check_somCna(somCna, geneModel, sex, ploidy, 
                           assumeSomCnaGaps, colnameTcn, 
-                          colnameCnaType)
+                          colnameCnaType, ZP_env)
   purity <- check_purity(purity)
-  somSmallVars <- check_gr_small_vars(somSmallVars, "somatic")
-  germSmallVars <- check_gr_small_vars(germSmallVars, "germline")
+  somSmallVars <- check_gr_small_vars(somSmallVars, "somatic", ZP_env)
+  germSmallVars <- check_gr_small_vars(germSmallVars, "germline", ZP_env)
   
   evaluation_per_variant_pre <- predict_per_variant(purity, 
                                                     sex,
@@ -730,7 +736,8 @@ predict_zygosity <- function(purity,
                                                     includeHomoDel,
                                                     includeIncompleteDel,
                                                     assumeSomCnaGaps,
-                                                    byTcn)
+                                                    byTcn, 
+                                                    ZP_env)
   evaluation_per_variant <- evaluation_per_variant_pre$evaluation_per_variant
   if(!is.null(evaluation_per_variant)){
     if(!is.null(geneModel)){
@@ -738,7 +745,7 @@ predict_zygosity <- function(purity,
         bamDna <- check_bam(bamDna)
         bamRna <- check_rna(bamRna)
         logDir <- check_logDir(logDir)
-        haploBlocks <- check_haploblocks(haploBlocks)
+        haploBlocks <- check_haploblocks(haploBlocks, ZP_env)
         vcf <- check_vcf(vcf)
         per_gene <- lapply(
           unique(evaluation_per_variant$gene), 
@@ -785,7 +792,7 @@ predict_zygosity <- function(purity,
       }    
       evaluation_per_gene <- bind_incdel_to_final_eval(
         evaluation_per_variant_pre$df_incompletedels,
-        combined_eval_per_gene) 
+        combined_eval_per_gene, ZP_env) 
     }
   }
   result_list <- list(
@@ -800,7 +807,7 @@ predict_zygosity <- function(purity,
     mat_info=comb_mat_info
   ) %>%
     compact()
-  remove_global_vars()
-  func_end()
+  #remove_global_vars(ZP_env)
+  func_end(ZP_env)
   return(result_list)
 } 
