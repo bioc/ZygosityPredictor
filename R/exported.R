@@ -338,6 +338,7 @@ aff_som_copies <- function(chr, af, tcn, purity, sex, c_normal=NULL){
 #' containing cna type information in the somCna object. 
 #' If not provided the tool tries to detect the column according to default 
 #' names
+#' @param ZP_env internal variable... not recommened to be changed by user
 #' @param verbose logical, default=FALSE; prints functions that are called
 #' @return A list containing tibbles with all input variants
 #' @importFrom IRanges subsetByOverlaps

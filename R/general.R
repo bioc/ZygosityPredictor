@@ -441,7 +441,7 @@ eval_phasing_new <- function(all_comb, df_gene, printLog, ZP_env){
         }
       }
     } else {
-      rare_case <- eval_rare_case(all_comb, ZP_env)
+      rare_case <- eval_rare_case(all_comb)
       ## evaluate all combinatioons
       if(0 %in% all_comb$score){
         ## potentially reachable all copies affectd by unphased combinations

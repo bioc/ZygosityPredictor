@@ -18,6 +18,7 @@ predict_per_variant(
   includeIncompleteDel = TRUE,
   assumeSomCnaGaps = FALSE,
   byTcn = TRUE,
+  ZP_env = NULL,
   verbose = FALSE
 )
 }
@@ -87,6 +88,8 @@ includeIncompleteDelS is TRUE. If FALSE the tool will not use tcn as a
 criterion to assign large deletions. It will use the cna_type column and 
 check for indicating strings like HOMDEL/HomoDel/DEL. Some commonly used 
 strings are covered. It is recommended to leave this flag TRUE}
+
+\item{ZP_env}{internal variable... not recommened to be changed by user}
 
 \item{verbose}{logical, default=FALSE; prints functions that are called}
 }
