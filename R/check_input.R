@@ -249,7 +249,7 @@ check_somCna <- function(somCna, geneModel, sex, ploidy,
         ploidy
     }
     new_somCna <- insert_missing_cnv_regions(somCna, geneModel, 
-                                             sex, ploidy)
+                                             sex, ploidy, ZP_env)
   } else {
   ## if cna gaps should not be assumed, missing tcn segments will be excluded
     if(sum(is.na(elementMetadata(somCna)[,"tcn"]))>0){
