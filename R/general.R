@@ -577,15 +577,18 @@ eval_one_mut <- function(df_gene, printLog, ZP_env){
 eval_lost_in_tumor <- function(df_gene, printLog, ZP_env){
   func_start(ZP_env)
   concern_info <- df_gene %>%
-    mutate(n_mut=1,
-           conf=1,
+    group_by(gene) %>%
+    summarize(
+      n_mut=length(gene),
+      info=paste(unique(pre_info), collapse = ", "),
+      wt_cp=min(wt_cp),
+    ) %>%
+    mutate(conf=1,
            eval_by="allele-freq",
-           score=1) %>%
-    select(gene, n_mut, score, conf, 
-           info=pre_info, 
-           wt_cp,
-           eval_by) %>%
-    mutate(warning="variant lost in tumor", wt_cp_range=NA, phasing=NA)
+           score=1,
+           warning="variant lost in tumor", 
+           wt_cp_range=paste(round(wt_cp, 2), round(wt_cp, 2), sep=" - "), 
+           phasing="not_required")
   append_loglist(concern_info$info, ZP_env=ZP_env)
   func_end(ZP_env)
   return(concern_info)
