@@ -391,10 +391,10 @@ find_unplaus_issues <- function(unplaus){
         paste(collapse = ", ") %>%
         paste("unplausible phasing combs:",.)
     } else {
-      issues <- NA
+      issues <- "none"
     }    
   } else {
-    issues <- NA
+    issues <- "none"
   }
 }
 #' @importFrom dplyr arrange case_when desc mutate pull select
@@ -508,11 +508,11 @@ eval_phasing_new <- function(all_comb, df_gene, printLog, ZP_env){
   if(gene_clear){
     gene_result <- most_relevant_comb %>%
       mutate(info=paste("most relevant phasing combination:",comb)) %>%
-      select(gene, score, phasing, wt_cp) 
+      select(gene, score, phasing, wt_cp, info) 
   } else {
     gene_result <- most_relevant_comb %>%
       select(gene) %>%
-      mutate(info="unsolvable phasing combination", phasing=NA, score=0, wt_cp=NA)
+      mutate(info="unsolvable phasing combination", phasing="unsolved", score=0, wt_cp=NA)
   }
   wt_cp_range <- paste(round(min(all_comb$min_poss_wt_cp, na.rm=TRUE),2), "-",
         round(max(all_comb$max_poss_wt_cp, na.rm=TRUE),2))
@@ -551,7 +551,11 @@ eval_one_mut_affects_all <- function(df_gene, printLog, ZP_env){
            conf=1,
            eval_by=ifelse(str_detect(class, "homdel"), "homdel","aff_cp")) %>%
     select(gene, n_mut, score=vn_status, conf, info, eval_by, wt_cp) %>%
-    mutate(warning=NA, wt_cp_range=NA, phasing=NA)
+    mutate(warning="none", 
+           wt_cp_range=paste(round(wt_cp,2), 
+                             round(wt_cp,2), 
+                             sep=" - "), 
+           phasing="none")
   append_loglist(concern_info$info, ZP_env=ZP_env)
   func_end(ZP_env)
   return(concern_info)
@@ -569,7 +573,11 @@ eval_one_mut <- function(df_gene, printLog, ZP_env){
            info=pre_info, 
            wt_cp,
            eval_by) %>%
-    mutate(warning=NA, wt_cp_range=NA, phasing=NA)
+    mutate(warning="none", 
+           wt_cp_range=paste(round(wt_cp,2), 
+                             round(wt_cp,2), 
+                             sep=" - "), 
+           phasing="none")
   append_loglist(concern_info$info, ZP_env=ZP_env)
   func_end(ZP_env)
   return(concern_info)
@@ -588,7 +596,7 @@ eval_lost_in_tumor <- function(df_gene, printLog, ZP_env){
            score=1,
            warning="variant lost in tumor", 
            wt_cp_range=paste(round(wt_cp, 2), round(wt_cp, 2), sep=" - "), 
-           phasing="not_required")
+           phasing="none")
   append_loglist(concern_info$info, ZP_env=ZP_env)
   func_end(ZP_env)
   return(concern_info)
