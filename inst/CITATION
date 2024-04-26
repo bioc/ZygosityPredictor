@@ -1,0 +1,20 @@
+citEntry(entry="article",
+         title = "ZygosityPredictor",
+         author = personList( as.person("Marco Rheinnecker"),
+                              as.person("Marc Rübsam"),
+                              as.person("Martina Fröhlich"),
+                              as.person("Nagarajan Paramasivam"),
+                              as.person("Christoph E Heilig"),
+                              as.person("Stefan Fröhling"),
+                              as.person("Richard F Schlenk"),
+                              as.person("Barbara Hutter"),
+                              as.person("Daniel Hübschmann")
+                              ),
+         year = 2024,
+         journal = "Bioinformatics Advances",
+         doi = "https://doi.org/10.1093/bioadv/vbae017",
+         volume = 4,
+         issue = 1,
+         textVersion = 
+         paste("Rheinnecker M, Fröhlich M, Rübsam M, et al., ZygosityPredictor,",
+         "Bioinformatics Advances, Volume 4, Issue 1, 2024, vbae017, https://doi.org/10.1093/bioadv/vbae017") )
