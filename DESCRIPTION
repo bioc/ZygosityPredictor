@@ -1,7 +1,7 @@
 Package: ZygosityPredictor
 Type: Package
 Title: Package for prediction of zygosity for variants/genes in NGS data
-Version: 1.10.0
+Version: 1.11.0
 Date: 2025-07-28
 Authors@R: c(
   person("Marco", "Rheinnecker", 
