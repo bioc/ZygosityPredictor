@@ -1637,7 +1637,27 @@ extract_base_at_refpos <- function(parsed_read, ref_pos, class, ref_alt,
 }
 #' @importFrom stringr str_sub
 #' @importFrom dplyr bind_rows mutate na_if
-#' @importFrom GenomicAlignments start end width cigarRangesAlongQuerySpace cigarRangesAlongReferenceSpace
+#' @importFrom GenomicAlignments start end width
+## cigarRangesAlongQuerySpace()/cigarRangesAlongReferenceSpace() are defunct
+## in GenomicAlignments >= 1.49.1 and replaced by the functions in the
+## cigarillo package. These wrappers dispatch to the available implementation
+## so the package works across Bioconductor versions.
+cigar_along_query <- function(cigar, with.ops=FALSE){
+  if(requireNamespace("cigarillo", quietly=TRUE) &&
+     packageVersion("GenomicAlignments") >= "1.49.1"){
+    cigarillo::cigars_as_ranges_along_query(cigar, with.ops=with.ops)
+  } else {
+    GenomicAlignments::cigarRangesAlongQuerySpace(cigar, with.ops=with.ops)
+  }
+}
+cigar_along_reference <- function(cigar, with.ops=FALSE){
+  if(requireNamespace("cigarillo", quietly=TRUE) &&
+     packageVersion("GenomicAlignments") >= "1.49.1"){
+    cigarillo::cigars_as_ranges_along_ref(cigar, with.ops=with.ops)
+  } else {
+    GenomicAlignments::cigarRangesAlongReferenceSpace(cigar, with.ops=with.ops)
+  }
+}
 parse_cigar <- function(bam, qname, paired){
   #func_start(ZP_env)
   paired_reads <- bam[which(bam$qname==qname)] 
@@ -1653,13 +1673,8 @@ parse_cigar <- function(bam, qname, paired){
   }
   
   ## parse cigar string according to query
-  ## from here for devel
-  cigq <- GenomicAlignments::cigarRangesAlongQuerySpace(cigar, with.ops = TRUE) 
-  cigr <- GenomicAlignments::cigarRangesAlongReferenceSpace(cigar, with.ops = FALSE) 
-  ## from here for bioconductor
-  #cigq <- cigarRangesAlongQuerySpace(cigar, with.ops = T) 
-  #cigr <- cigarRangesAlongReferenceSpace(cigar, with.ops = F) 
-  ## util here for bioconductor
+  cigq <- cigar_along_query(cigar, with.ops = TRUE)
+  cigr <- cigar_along_reference(cigar, with.ops = FALSE)
   
   
   raw_cigs <- lapply(mate, function(i){
